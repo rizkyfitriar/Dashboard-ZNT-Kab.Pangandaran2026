@@ -106,10 +106,12 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
  <aside class="side" id="side"></aside>
  <section class="mapcol">
   <div class="mtool">
-   <label>Warna zona <select id="mmode"><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></label>
+   <label>Warna zona <select id="mmode"><option value="nilai">Nilai tanah (8 kelas)</option><option value="rsd">Standar deviasi (RSD)</option><option value="jml">Sebaran sampel (jumlah titik)</option><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></label>
    <label><input type="checkbox" id="mzon" checked> Zona (SHP)</label>
    <label><input type="checkbox" id="mpts" checked> Titik sampel</label>
-   <label><input type="checkbox" id="mlab"> Nomor zona</label>
+   <label>Label <select id="mlab"><option value="none">Tanpa label</option><option value="zona">Nomor zona</option><option value="rata">Rata-rata nilai (Rp ribu)</option><option value="n">Jumlah titik</option><option value="rsd">RSD (%)</option></select></label>
+   <label class="aoi"><input type="checkbox" id="bkec"> <i class="swatch" style="--c:#111"></i>Batas kecamatan</label>
+   <label class="aoi"><input type="checkbox" id="bdesa"> <i class="swatch" style="--c:#555;border-style:dashed"></i>Batas desa</label>
    <label class="aoi"><input type="checkbox" id="aoiA"> <i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</label>
    <label class="aoi"><input type="checkbox" id="aoiB"> <i class="swatch" style="--c:#0ea5e9"></i>AOI baru</label>
    <button class="btn ghost" id="aoiZ" style="padding:3px 10px">Zoom ke AOI</button>
@@ -124,6 +126,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
 <script src="leaflet/leaflet.js"></script>
 <script src="zona_geo.js"></script>
 <script src="aoi_geo.js"></script>
+<script src="batas_geo.js"></script>
 <script src="data.js"></script>
 <script>
 (function(){
@@ -133,15 +136,16 @@ const fmt=(x,d=0)=>x==null||isNaN(x)?'':x.toLocaleString('id-ID',{minimumFractio
 const pct=(a,b)=>b?a/b*100:0;
 const UNK='(belum ditentukan)';
 let DB=window.DATA||{zones:[],points:[],svymap:{}};
-const GEO=window.ZONA_GEO;
-const st={zon:true,aoiA:false,aoiB:false,svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
+const GEO=window.ZONA_GEO,BAT=window.BATAS;
+const ZK={};if(GEO)GEO.features.forEach(f=>ZK[f.properties.z]=f.properties.k||[]);
+const st={kec:'',desa:'',labm:'none',brk:null,bkec:false,bdesa:false,zon:true,aoiA:false,aoiB:false,svy:'',mode:'nilai',pts:true,tab:'analisis',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
 const SVY_COL=['#2f7fb8','#d0802c','#7a5aa6','#3a9b6a','#b8465a'];
 
 /* ---------- hitung ---------- */
 const targetOf=ha=>ha<=900?3:ha<=1250?4:5;
 function compute(){
-  const valid={},psv={};
-  DB.points.forEach(p=>{if(p.nilai>0)valid[p.zona]=(valid[p.zona]||0)+1;const o=psv[p.zona]=psv[p.zona]||{};o[p.svy]=(o[p.svy]||0)+1});
+  const valid={},psv={},dsz={};
+  DB.points.forEach(p=>{(dsz[p.zona]=dsz[p.zona]||new Set()).add(p.desa);if(p.nilai>0)valid[p.zona]=(valid[p.zona]||0)+1;const o=psv[p.zona]=psv[p.zona]||{};o[p.svy]=(o[p.svy]||0)+1});
   const vals={};DB.points.forEach(p=>{if(p.nilai>0)(vals[p.zona]=vals[p.zona]||[]).push(p.nilai)});
   const zones=DB.zones.map(z=>{
     const ha=z.luas/10000,target=targetOf(ha),n=z.n!=null?z.n:(valid[z.zona]||0);
@@ -152,7 +156,8 @@ function compute(){
     if(!svy&&psv[z.zona])svy=Object.entries(psv[z.zona]).sort((a,b)=>b[1]-a[1])[0][0];
     const cap=n>=target?'Selesai':n>0?'Proses':'Belum';
     const qc=n===0?'Belum':n<3?'Kurang':(rsd!=null&&rsd>30)?'Revisi':'Valid';
-    return {...z,ha,target,n,rsd,svy:svy||UNK,cap,qc,kurang:Math.max(target-n,0)};
+    const vv=vals[z.zona],rata=vv&&vv.length?vv.reduce((a,x)=>a+x,0)/vv.length:null;
+    return {...z,ha,target,n,rsd,rata,ks:ZK[z.zona]||[],ds:[...(dsz[z.zona]||[])],svy:svy||UNK,cap,qc,kurang:Math.max(target-n,0)};
   });
   const byZ={};zones.forEach(z=>byZ[z.zona]=z);
   const svys=[...new Set(zones.map(z=>z.svy))].filter(s=>s!==UNK).sort();
@@ -164,14 +169,25 @@ let C=compute();
 const svyCol=s=>{const i=C.svys.indexOf(s);return i<0?css('--none'):SVY_COL[i%SVY_COL.length]};
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
 const CAP_COL={Selesai:'--good',Proses:'--warn',Belum:'--bad'},QC_COL={Valid:'--good',Revisi:'--rsd',Kurang:'--warn',Belum:'--none'};
-const vis=z=>!st.svy||z.svy===st.svy;
+const vis=z=>(!st.svy||z.svy===st.svy)&&(!st.kec||z.ks.includes(st.kec))&&(!st.desa||z.ds.includes(st.desa));
+const visP=p=>(!st.svy||p.svy===st.svy)&&(!st.kec||p.kec===st.kec)&&(!st.desa||p.desa===st.desa);
 const zsort=(a,b)=>parseInt(a)-parseInt(b)||String(a).localeCompare(b);
 const fdate=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
 
 /* ---------- panel kiri ---------- */
+const CLS8=['#1a9850','#66bd63','#a6d96a','#d9ef8b','#fee08b','#fdae61','#f46d43','#d73027'];
+try{const b=JSON.parse(localStorage.getItem('znt-brk')||'null');if(Array.isArray(b)&&b.length===7)st.brk=b}catch(e){}
+function defaultBreaks(){const v=C.zones.filter(z=>z.rata>0).map(z=>z.rata).sort((a,b)=>a-b);if(v.length<8)return [100000,200000,300000,500000,800000,1500000,3000000];
+  const out=[];for(let k=1;k<8;k++){let x=Math.round(v[Math.floor(k*v.length/8)]/1000)*1000;if(out.length&&x<=out[out.length-1])x=out[out.length-1]+1000;out.push(x)}return out}
+function getBreaks(){return st.brk||defaultBreaks()}
+function classOf(v){const b=getBreaks();let i=0;while(i<7&&v>=b[i])i++;return i}
+const RSD_CLS=[['≤ 15%',x=>x<=15,'#1a9850'],['15 - 30%',x=>x<=30,'#a6d96a'],['30 - 50%',x=>x<=50,'#fee08b'],['50 - 100%',x=>x<=100,'#f46d43'],['> 100%',x=>true,'#a50026']];
+const JML_CLS=[['0 titik',n=>n===0,'#cfd8dc'],['1 - 2',n=>n<=2,'#c6dbef'],['3',n=>n===3,'#9ecae1'],['4 - 5',n=>n<=5,'#6baed6'],['6 - 9',n=>n<=9,'#3182bd'],['10 atau lebih',n=>true,'#08519c']];
+function kecList(){return [...new Set(C.points.map(p=>p.kec).filter(Boolean))].sort()}
+function desaList(){return [...new Set(C.points.filter(p=>!st.kec||p.kec===st.kec).map(p=>p.desa).filter(Boolean))].sort()}
 function statsHtml(items){return `<div class="stats">${items.map(i=>`<div class="stat"><b>${fmt(i[1])}</b><span><i class="dot" style="background:${i[2]}"></i>${i[0]}</span></div>`).join('')}</div>`}
 function side(){
-  const Z=C.zones.filter(vis),P=C.points.filter(p=>!st.svy||p.svy===st.svy);
+  const Z=C.zones.filter(vis),P=C.points.filter(visP);
   const tz=Z.length,cnt=k=>Z.filter(z=>z.cap===k).length,q=k=>Z.filter(z=>z.qc===k).length;
   const tot=Z.reduce((s,z)=>s+z.target,0),ok=Z.reduce((s,z)=>s+Math.min(z.n,z.target),0);
   const selesai=cnt('Selesai'),proses=cnt('Proses'),belum=cnt('Belum');
@@ -183,8 +199,14 @@ function side(){
   <div class="card"><h2>Filter surveyor</h2>
    <div class="row"><select id="fsvy" style="flex:1"><option value="">Semua surveyor</option>${C.svys.concat(C.zones.some(z=>z.svy===UNK)?[UNK]:[]).map(s=>`<option ${st.svy===s?'selected':''}>${esc(s)}</option>`).join('')}</select><button class="btn ghost" id="reset">Reset</button></div>
    <div class="chips">${chips}</div>
+   <div class="row" style="margin-top:10px"><select id="fkec" style="flex:1"><option value="">Semua kecamatan</option>${kecList().map(k=>`<option ${st.kec===k?'selected':''}>${esc(k)}</option>`).join('')}</select><select id="fdesa" style="flex:1"><option value="">Semua desa</option>${desaList().map(k=>`<option value="${esc(k)}" ${st.desa===k?'selected':''}>${esc(k)}</option>`).join('')}</select></div>
    <div class="row" style="margin-top:10px"><input type="search" id="fz" list="zl" placeholder="Cari nomor zona, mis. 236P" style="flex:1"><datalist id="zl">${C.zones.map(z=>`<option value="${esc(z.zona)}">`).join('')}</datalist><button class="btn ghost" id="fzb">Cari</button></div>
   </div>
+  <div class="card"><h2>Klasifikasi nilai tanah (8 kelas)</h2>
+   <div class="sub">Batas 7 nilai (Rp/m², pisahkan koma) untuk membagi 8 kelas hijau ke merah. Isi sesuai tabel permen atau juknis. Bila tidak diisi, dipakai kuantil otomatis.</div>
+   <input type="search" id="brk" value="${esc(getBreaks().join(', '))}" style="width:100%;margin-top:8px">
+   <div class="row" style="margin-top:8px"><button class="btn" id="brkok">Terapkan</button><button class="btn ghost" id="brkauto">Kuantil otomatis</button></div>
+   <p class="note" id="brkmsg"></p></div>
   <div class="card sync" id="sync"><h2>Sinkronisasi data</h2>
    <div class="row" style="justify-content:space-between"><span><i class="sdot"></i> Data spasial ZNT dan titik terhubung</span></div>
    <div class="sub" id="syncmsg" style="margin-top:4px">${esc(syncText())}</div>
@@ -214,7 +236,10 @@ function side(){
   <div class="card"><h2>Log sampel terbaru</h2>
    <div class="log">${P.slice().sort((a,b)=>(b.tp||'').localeCompare(a.tp||'')||(b.no||0)-(a.no||0)).slice(0,20).map(p=>`<div data-pz="${esc(p.zona)}" data-pn="${p.no}"><b>#${p.no} &middot; ${esc(p.zona||'tanpa zona')}</b><span>${esc(p.svy.split(' ')[0])} &middot; ${esc(p.jenis)} &middot; ${fdate(p.tp)}</span></div>`).join('')||'<div>Belum ada data.</div>'}</div></div>`;
   $('#bsync').onclick=syncNow;$('#bcsvz').onclick=csvZona;$('#bcsvp').onclick=csvTitik;$('#bopen').onclick=()=>$('#fileInput').click();
-  $('#fsvy').onchange=e=>setSvy(e.target.value);$('#reset').onclick=()=>setSvy('');
+  $('#fsvy').onchange=e=>setSvy(e.target.value);$('#reset').onclick=resetAll;
+  $('#fkec').onchange=e=>setKec(e.target.value);$('#fdesa').onchange=e=>setDesa(e.target.value);
+  $('#brkok').onclick=()=>{const v=$('#brk').value.split(/[,;\s]+/).map(Number).filter(x=>x>0);if(v.length!==7||v.some((x,i)=>i&&x<=v[i-1])){$('#brkmsg').textContent='Isi tepat 7 angka yang naik berurutan.';return}st.brk=v;try{localStorage.setItem('znt-brk',JSON.stringify(v))}catch(e){}st.mode='nilai';$('#mmode').value='nilai';restyle();legend();drawLabels();$('#brkmsg').textContent='Klasifikasi diterapkan.'};
+  $('#brkauto').onclick=()=>{st.brk=null;try{localStorage.removeItem('znt-brk')}catch(e){}$('#brk').value=getBreaks().join(', ');restyle();legend();$('#brkmsg').textContent='Kuantil otomatis dipakai.'};
   document.querySelectorAll('.chipb').forEach(b=>b.onclick=()=>setSvy(st.svy===b.dataset.s?'':b.dataset.s));
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.trend=+b.dataset.t;side()});
   $('#fzb').onclick=()=>focusZone($('#fz').value.trim());$('#fz').onkeydown=e=>{if(e.key==='Enter')focusZone(e.target.value.trim())};
@@ -241,7 +266,7 @@ function trendSvg(P){
 }
 
 /* ---------- peta ---------- */
-let map,zoneLayer,ptLayer,labLayer,REND,layers={},ptMarkers={},aoiLayer={};
+let map,zoneLayer,ptLayer,labLayer,REND,layers={},ptMarkers={},aoiLayer={},bLayer={};
 function initMap(){
   if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">Peta tidak dapat dimuat.</div>';return}
   map=L.map('map',{zoomControl:true});
@@ -269,13 +294,23 @@ function initMap(){
     aoiLayer.A=L.geoJSON(AOI.awal,{renderer:REND,interactive:false,style:{color:'#e11d48',weight:2.2,dashArray:'6 5',fill:false}});
     aoiLayer.B=L.geoJSON(AOI.baru,{renderer:REND,interactive:false,style:{color:'#0ea5e9',weight:2.2,fill:false}});
   }
+  if(BAT){
+    bLayer.kec=L.geoJSON(BAT.kec,{renderer:REND,interactive:false,style:{color:'#111',weight:2.4,fill:false}});
+    bLayer.desa=L.geoJSON(BAT.desa,{renderer:REND,interactive:false,style:{color:'#555',weight:1,dashArray:'4 3',fill:false}});
+    bLayer.kecL=L.layerGroup();
+    BAT.kec.features.forEach((f,i)=>{const c=L.geoJSON(f).getBounds().getCenter();L.marker(c,{interactive:false,icon:L.divIcon({className:'',html:`<span style="font:700 11px var(--sans);color:#111;text-transform:uppercase;letter-spacing:.04em;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 5px #fff;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block">${esc(f.properties.n)}</span>`,iconSize:[0,0]})}).addTo(bLayer.kecL)});
+  }
   ptLayer=L.layerGroup().addTo(map);labLayer=L.layerGroup();
   drawPts();
   const fit=()=>{map.invalidateSize();if(zoneLayer&&!st.svy)map.fitBounds(zoneLayer.getBounds())};
   window.addEventListener('load',fit);setTimeout(fit,300);new ResizeObserver(()=>map.invalidateSize()).observe(document.getElementById('map'));
 }
 function zcolor(z){if(!z)return css('--line');
-  if(st.mode==='cap')return css(CAP_COL[z.cap]);if(st.mode==='qc')return css(QC_COL[z.qc]);return svyCol(z.svy)}
+  if(st.mode==='cap')return css(CAP_COL[z.cap]);if(st.mode==='qc')return css(QC_COL[z.qc]);
+  if(st.mode==='nilai')return z.rata>0?CLS8[classOf(z.rata)]:css('--none');
+  if(st.mode==='rsd'){if(z.rsd==null||z.n<2)return css('--none');return RSD_CLS.find(c=>c[1](z.rsd))[2]}
+  if(st.mode==='jml')return JML_CLS.find(c=>c[1](z.n))[2];
+  return svyCol(z.svy)}
 function zstyle(f){const z=C.byZ[f.properties.z];const on=!z||vis(z);
   return {color:css('--surface'),weight:.7,fillColor:zcolor(z),fillOpacity:on?.72:.08,opacity:on?1:.2}}
 function tip(zn){const z=C.byZ[zn];if(!z)return `Zona ${esc(zn)}`;return `<b>Zona ${esc(zn)}</b> &middot; ${esc(z.svy)}<br>Titik ${z.n} dari ${z.target} &middot; ${z.cap}${z.rsd!=null?` &middot; RSD ${fmt(z.rsd,1)}%`:''}`}
@@ -291,24 +326,32 @@ function popup(zn){const z=C.byZ[zn];if(!z)return `<b>Zona ${esc(zn)}</b><br>Bel
   const r=(k,val)=>`<div class="pr"><span>${k}</span><b>${val}</b></div>`;
   return `<div class="pop"><div class="ph"><span class="pbar" style="background:${svyCol(z.svy)}"></span><b>Zona ${esc(zn)}</b>${badge}</div>
   ${r('Surveyor Wilayah',`<span style="color:${svyCol(z.svy)}">${esc(z.svy)}</span>`)}${r('Luasan Zona',fmt(z.ha,2)+' Ha')}${r('Kategori Target',kat)}${r('Target Wajib',z.target+' Titik Sampel')}
-  ${r('Titik di Lapangan',pts.length+' Titik')}${r('Dihitung untuk Target',Math.min(z.n,z.target)+' / '+z.target+' Titik')}${r('Penggunaan Tanah',esc(z.guna||'-'))}${r('Jenis Data',jenis)}
+  ${r('Titik di Lapangan',pts.length+' Titik')}${r('Dihitung untuk Target',Math.min(z.n,z.target)+' / '+z.target+' Titik')}${r('Penggunaan Tanah',esc(z.guna||'-'))}${r('Kecamatan',esc(z.ks.join(', ')||'-'))}${r('Jenis Data',jenis)}
   <div class="pq"><div class="pt">QUALITY CONTROL (SIPENTA)</div>${r('Status QC',qcb)}${r('Rata-rata Nilai',mean==null?'-':'Rp '+fmt(mean)+' / m²')}${r('RSD / Variasi',z.rsd==null?'-':fmt(z.rsd,2)+'%')}</div>
   ${pts.length?`<details open><summary>Daftar titik (${pts.length})</summary><div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>`}
 function drawPts(){
   if(!ptLayer)return;ptLayer.clearLayers();ptMarkers={};
-  if(st.pts)C.points.forEach(p=>{if(!p.x||!p.y)return;if(st.svy&&p.svy!==st.svy)return;
+  if(st.pts)C.points.forEach(p=>{if(!p.x||!p.y)return;if(!visP(p))return;
     const m=L.circleMarker([p.y,p.x],{renderer:REND,interactive:false,radius:4,weight:1.2,color:'#fff',fillColor:svyCol(p.svy),fillOpacity:1});
     m.addTo(ptLayer);ptMarkers[p.no]=m});
   drawLabels();
 }
 function drawLabels(){
   if(!labLayer)return;labLayer.clearLayers();
-  if(st.lab&&zoneLayer){Object.entries(layers).forEach(([z,l])=>{if(C.byZ[z]&&!vis(C.byZ[z]))return;L.marker(l.getBounds().getCenter(),{interactive:false,icon:L.divIcon({className:'',html:`<span style="font:600 10px var(--mono);color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff">${esc(z)}</span>`,iconSize:[0,0]})}).addTo(labLayer)});labLayer.addTo(map)}
+  if(st.labm!=='none'&&zoneLayer){Object.entries(layers).forEach(([z,l])=>{const zz=C.byZ[z];if(zz&&!vis(zz))return;
+    let t=z;if(st.labm==='rata')t=zz&&zz.rata>0?fmt(zz.rata/1000):'';else if(st.labm==='n')t=zz?String(zz.n):'';else if(st.labm==='rsd')t=zz&&zz.rsd!=null?fmt(zz.rsd,0):'';
+    if(t==='')return;
+    L.marker(l.getBounds().getCenter(),{interactive:false,icon:L.divIcon({className:'',html:`<span style="font:600 10px var(--mono);color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff">${esc(t)}</span>`,iconSize:[0,0]})}).addTo(labLayer)});labLayer.addTo(map)}
   else if(map)map.removeLayer(labLayer);
 }
 function showAoi(){
   ['A','B'].forEach(k=>{const l=aoiLayer[k];if(!l||!map)return;const on=st['aoi'+k];if(on&&!map.hasLayer(l)){l.addTo(map);l.bringToFront&&l.bringToFront()}else if(!on&&map.hasLayer(l))map.removeLayer(l)});
   if(ptLayer&&st.pts)drawPts();legend();
+}
+function showBatas(){
+  if(!map||!bLayer.kec)return;
+  [['kec',st.bkec],['kecL',st.bkec],['desa',st.bdesa]].forEach(([k,on])=>{const l=bLayer[k];if(on&&!map.hasLayer(l))l.addTo(map);else if(!on&&map.hasLayer(l))map.removeLayer(l)});
+  legend();
 }
 function showZon(){
   if(!zoneLayer||!map)return;
@@ -318,8 +361,15 @@ function showZon(){
 }
 function restyle(){if(zoneLayer)zoneLayer.setStyle(zstyle)}
 function legend(){
-  const L2=st.mode==='svy'?C.svys.map(s=>[svyCol(s),s]).concat(C.zones.some(z=>z.svy===UNK)?[[css('--none'),UNK]]:[]):st.mode==='cap'?[['Selesai','--good'],['Proses','--warn'],['Belum','--bad']].map(a=>[css(a[1]),a[0]]):[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
-  $('#legend').innerHTML=(st.zon?L2:[]).map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
+  let L2;const Zv=C.zones.filter(vis);
+  if(st.mode==='nilai'){const b=getBreaks(),rp=x=>'Rp '+fmt(x);
+    L2=CLS8.map((c,i)=>[c,(i===0?'< '+rp(b[0]):i===7?'&ge; '+rp(b[6]):rp(b[i-1])+' - '+rp(b[i]))+' ('+Zv.filter(z=>z.rata>0&&classOf(z.rata)===i).length+')']);L2.push([css('--none'),'Belum ada nilai ('+Zv.filter(z=>!(z.rata>0)).length+')'])}
+  else if(st.mode==='rsd'){L2=RSD_CLS.map(c=>[c[2],'RSD '+c[0]+' ('+Zv.filter(z=>z.rsd!=null&&z.n>=2&&RSD_CLS.find(k=>k[1](z.rsd))===c).length+')']);L2.push([css('--none'),'RSD belum bisa dihitung'])}
+  else if(st.mode==='jml'){L2=JML_CLS.map(c=>[c[2],c[0]+' ('+Zv.filter(z=>JML_CLS.find(k=>k[1](z.n))===c).length+' zona)'])}
+  else if(st.mode==='svy')L2=C.svys.map(s=>[svyCol(s),s]).concat(C.zones.some(z=>z.svy===UNK)?[[css('--none'),UNK]]:[]);
+  else if(st.mode==='cap')L2=[['Selesai','--good'],['Proses','--warn'],['Belum','--bad']].map(a=>[css(a[1]),a[0]]);
+  else L2=[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
+  $('#legend').innerHTML=(st.zon?L2:[]).map(a=>`<span><i style="background:${a[0]}"></i>${a[1]}</span>`).join('')+(st.bkec?'<span><i class="swatch" style="--c:#111"></i>Batas kecamatan</span>':'')+(st.bdesa?'<span><i class="swatch" style="--c:#555;border-style:dashed"></i>Batas desa</span>':'')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(visP).length)})</span>`:'');
 }
 function focusZone(zn){
   const l=layers[zn];if(!l){return}
@@ -329,6 +379,41 @@ function focusZone(zn){
   document.getElementById('map').scrollIntoView({block:'nearest'});
 }
 
+/* ---------- analisis nilai tanah ---------- */
+function median(a){if(!a.length)return 0;const b=a.slice().sort((x,y)=>x-y),m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2}
+function analisis(Z,P){
+  const gz=p=>(C.byZ[p.zona]||{}).guna||'';
+  const V=P.filter(p=>p.nilai>0&&p.zona).map(p=>({...p,guna:gz(p)}));
+  const med={};['Pertanian','Non-Pertanian'].forEach(g=>med[g]=median(V.filter(p=>p.guna===g).map(p=>p.nilai)));
+  const pf=p=>{const f=[],m=med[p.guna];
+    if(p.luasT>0&&p.luasT<100)f.push('tanah sangat kecil ('+fmt(p.luasT)+' m²), harga per m² cenderung tinggi');
+    if(p.luasT>=10000)f.push('tanah sangat luas ('+fmt(p.luasT)+' m²), harga per m² cenderung rendah');
+    if(p.akses==='Sangat Baik')f.push('akses sangat baik');else if(p.akses==='Kurang')f.push('akses kurang');
+    if(p.jalan==='Setapak')f.push('jalan setapak');else if(p.jalan==='Arteri'||p.jalan==='Kolektor')f.push('jalan '+p.jalan.toLowerCase());
+    if(p.jns==='Komersial')f.push('peruntukan komersial');
+    f.push(p.jenis==='Transaksi'?'data transaksi':p.jenis==='Penawaran'?'harga penawaran':'data '+String(p.jenis).toLowerCase());
+    if(m&&p.nilai>3*m)f.push('lebih dari 3x median '+p.guna.toLowerCase()+' (Rp '+fmt(m)+'), perlu verifikasi');
+    if(m&&p.nilai<.3*m)f.push('kurang dari 0,3x median '+p.guna.toLowerCase()+' (Rp '+fmt(m)+'), perlu verifikasi');
+    return f.join('; ')};
+  const pcols=[{h:'No',v:r=>r.no},{h:'Zona',v:r=>r.zona},{h:'Kecamatan',v:r=>r.kec},{h:'Desa',v:r=>r.desa},{h:'Jenis data',v:r=>r.jenis},{h:'Rp/m²',n:1,v:r=>Math.round(r.nilai),html:r=>fmt(r.nilai)},{h:'Luas tanah (m²)',n:1,v:r=>r.luasT,html:r=>fmt(r.luasT)},{h:'Jalan',v:r=>r.jalan},{h:'Akses',v:r=>r.akses},{h:'Indikator dari data',v:r=>pf(r)}];
+  const zf=z=>{const f=[];if(z.n<3)f.push('hanya '+z.n+' titik');if(z.rsd!=null)f.push('RSD '+fmt(z.rsd,1)+'%'+(z.rsd>30?' (di atas 30%)':''));f.push(fmt(z.ha,0)+' ha');return f.join('; ')};
+  const zcols=[{h:'Zona',v:r=>r.zona},{h:'Kecamatan',v:r=>r.ks.join(', ')},{h:'Titik',n:1,v:r=>r.n},{h:'Rata-rata Rp/m²',n:1,v:r=>Math.round(r.rata),html:r=>fmt(r.rata)},{h:'RSD (%)',n:1,v:r=>r.rsd==null?'':+r.rsd.toFixed(1)},{h:'Indikator dari data',v:r=>zf(r)}];
+  const blocks=[];
+  ['Pertanian','Non-Pertanian'].forEach(g=>{const q=V.filter(p=>p.guna===g);
+    blocks.push({t:'Harga tertinggi: '+g+' (titik)',c:pcols,r:q.slice().sort((a,b)=>b.nilai-a.nilai).slice(0,5)});
+    blocks.push({t:'Harga terendah: '+g+' (titik)',c:pcols,r:q.slice().sort((a,b)=>a.nilai-b.nilai).slice(0,5)})});
+  ['Pertanian','Non-Pertanian'].forEach(g=>{const q=Z.filter(z=>z.guna===g&&z.rata>0&&z.n>=3);
+    blocks.push({t:'Zona dengan rata-rata tertinggi: '+g+' (minimal 3 titik)',c:zcols,r:q.slice().sort((a,b)=>b.rata-a.rata).slice(0,5)});
+    blocks.push({t:'Zona dengan rata-rata terendah: '+g+' (minimal 3 titik)',c:zcols,r:q.slice().sort((a,b)=>a.rata-b.rata).slice(0,5)})});
+  const cnt={};P.forEach(p=>{if(p.zona)cnt[p.zona]=(cnt[p.zona]||0)+1});
+  const top=Z.map(z=>({...z,tot:cnt[z.zona]||0})).sort((a,b)=>b.tot-a.tot).slice(0,8);
+  const tcols=[{h:'Zona',v:r=>r.zona},{h:'Peruntukan',v:r=>r.guna},{h:'Kecamatan',v:r=>r.ks.join(', ')},{h:'Titik',n:1,v:r=>r.tot},{h:'Target',n:1,v:r=>r.target},{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(0)},{h:'RSD (%)',n:1,v:r=>r.rsd==null?'':+r.rsd.toFixed(1)},{h:'Surveyor',v:r=>r.svy},{h:'Indikator dari data',v:r=>{const f=[];f.push(r.tot>r.target?'melebihi target ('+r.tot+' dari '+r.target+')':'sesuai target');if(r.rsd!=null&&r.rsd>30)f.push('RSD di atas 30%, indikasi titik ditambah untuk menurunkan RSD');f.push('titik per 100 ha: '+fmt(r.tot/(r.ha/100),1));return f.join('; ')}}];
+  blocks.push({t:'Jumlah sampel terbanyak per zona',c:tcols,r:top});
+  const html='<p class="note" style="margin-top:0">Indikator dihitung otomatis dari atribut data (luas tanah, akses, jenis data, perbandingan dengan median). Ini petunjuk untuk verifikasi, bukan penyebab pasti. Mengikuti filter surveyor, kecamatan, dan desa di panel kiri.</p>'+blocks.map(b=>`<h3 style="font-size:13px;margin:16px 0 6px">${esc(b.t)}</h3>${table(b.c,b.r)}`).join('');
+  const copy=blocks.map(b=>b.t+'\n'+tsv(b.c,b.r)).join('\n\n');
+  return {html,copy,desc:'Harga tertinggi dan terendah, serta zona dengan sampel terbanyak, beserta indikator dari data.'};
+}
+
 /* ---------- rekap tabel ---------- */
 function table(cols,rows){
   if(!rows.length)return '<div class="empty">Tidak ada data.</div>';
@@ -336,12 +421,13 @@ function table(cols,rows){
 }
 const tsv=(cols,rows)=>[cols.map(c=>c.h).join('\t'),...rows.map(r=>cols.map(c=>c.v(r)==null?'':c.v(r)).join('\t'))].join('\n');
 let COPY='';
-const TABS=[['belum','Belum survei'],['kurang','Sampel kurang'],['rsd','RSD di atas 30%'],['tgl','Tanggal transaksi'],['zona','Semua zona']];
+const TABS=[['analisis','Analisis nilai tanah'],['belum','Belum survei'],['kurang','Sampel kurang'],['rsd','RSD di atas 30%'],['tgl','Tanggal transaksi'],['zona','Semua zona']];
 function rekap(){
-  let cols,rows,desc;
+  let cols,rows,desc,custom=null;
   const Z=C.zones.filter(vis);
   const zc=[{h:'No. Zona',v:r=>r.zona},{h:'Surveyor',v:r=>r.svy}];
-  if(st.tab==='belum'){rows=Z.filter(z=>z.n===0).sort((a,b)=>a.svy.localeCompare(b.svy)||zsort(a.zona,b.zona));
+  if(st.tab==='analisis'){const A=analisis(Z,C.points.filter(visP));custom=A.html;COPY=A.copy;desc=A.desc}
+  else if(st.tab==='belum'){rows=Z.filter(z=>z.n===0).sort((a,b)=>a.svy.localeCompare(b.svy)||zsort(a.zona,b.zona));
     cols=[{h:'Surveyor',v:r=>r.svy},{h:'No. Zona',v:r=>r.zona},{h:'Penggunaan',v:r=>r.guna},{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(1)},{h:'Target',n:1,v:r=>r.target}];
     const by={};rows.forEach(r=>by[r.svy]=(by[r.svy]||0)+1);desc=`${rows.length} zona belum ada titik. `+Object.entries(by).map(([s,n])=>`${esc(s)}: ${n}`).join(' &middot; ')}
   else if(st.tab==='kurang'){rows=Z.filter(z=>z.kurang>0&&(!st.kurang||z.kurang===st.kurang)).sort((a,b)=>b.kurang-a.kurang||zsort(a.zona,b.zona));
@@ -351,16 +437,16 @@ function rekap(){
     cols=[...zc,{h:'Jumlah titik',n:1,v:r=>r.n},{h:'RSD (%)',n:1,v:r=>+r.rsd.toFixed(2),html:r=>`<span class="pill rsd">${fmt(r.rsd,2)}</span>`}];
     desc=`${rows.length} zona dengan RSD di atas 30% dan perlu revisi atau tambahan sampel.`}
   else if(st.tab==='tgl'){const j=st.jenis;
-    rows=C.points.filter(p=>(!st.svy||p.svy===st.svy)&&p.tp&&p.tp===p.tt&&(j==='Semua'||p.jenis===j)).sort((a,b)=>a.svy.localeCompare(b.svy)||a.no-b.no);
+    rows=C.points.filter(p=>visP(p)&&p.tp&&p.tp===p.tt&&(j==='Semua'||p.jenis===j)).sort((a,b)=>a.svy.localeCompare(b.svy)||a.no-b.no);
     cols=[{h:'No. Sampel',v:r=>r.no},{h:'Surveyor',v:r=>r.svy},{h:'Jenis data',v:r=>r.jenis},{h:'Zona',v:r=>r.zona},{h:'Tgl pelaksanaan',v:r=>r.tp},{h:'Keterangan',v:r=>'Tanggal transaksi sama dengan tanggal pelaksanaan'}];
     const tot=C.points.filter(p=>j==='Semua'||p.jenis===j).length;
     desc=`${rows.length} dari ${tot} titik berjenis ${j==='Semua'?'apa pun':j} bertanggal transaksi sama dengan tanggal pelaksanaan. Jenis <select id="jf">${['Transaksi','Individual','Penawaran','Semua'].map(x=>`<option ${x===j?'selected':''}>${x}</option>`).join('')}</select>`}
   else{rows=Z.slice().sort((a,b)=>zsort(a.zona,b.zona));
     cols=[{h:'No. Zona',v:r=>r.zona},{h:'Penggunaan',v:r=>r.guna},{h:'Surveyor',v:r=>r.svy},{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(1)},{h:'Target',n:1,v:r=>r.target},{h:'Titik',n:1,v:r=>r.n},{h:'RSD (%)',n:1,v:r=>r.rsd==null?'':+r.rsd.toFixed(2)},{h:'Capaian',v:r=>r.cap},{h:'QC',v:r=>r.qc}];
     desc=`Semua ${rows.length} zona.`}
-  COPY=tsv(cols,rows);
+  if(!custom)COPY=tsv(cols,rows);
   $('#rekap').innerHTML=`<div class="tabs" role="tablist">${TABS.map(t=>`<button class="tab" role="tab" data-tab="${t[0]}" aria-selected="${t[0]===st.tab}">${t[1]}</button>`).join('')}</div>
-  <div class="panel"><div class="tools"><p>${desc}</p><button class="btn ghost" id="copy">Salin untuk spreadsheet</button></div>${table(cols,rows)}<p class="note">Klik baris zona untuk melihatnya di peta.</p></div>`;
+  <div class="panel"><div class="tools"><p>${desc}</p><button class="btn ghost" id="copy">Salin untuk spreadsheet</button></div>${custom||table(cols,rows)}<p class="note">Klik baris zona untuk melihatnya di peta.</p></div>`;
   document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{st.tab=b.dataset.tab;rekap()});
   document.querySelectorAll('tr[data-z]').forEach(tr=>{const go=()=>focusZone(tr.dataset.z);tr.onclick=go;tr.onkeydown=e=>{if(e.key==='Enter')go()}});
   const cp=$('#copy');cp.onclick=()=>{const done=()=>{cp.textContent='Tersalin'};(navigator.clipboard?navigator.clipboard.writeText(COPY):Promise.reject()).then(done).catch(()=>{const ta=document.createElement('textarea');ta.value=COPY;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){cp.textContent='Gagal menyalin'}ta.remove()})};
@@ -369,15 +455,26 @@ function rekap(){
 }
 
 /* ---------- kontrol ---------- */
-function setSvy(s){st.svy=s;side();restyle();drawPts();legend();rekap();
-  if(map&&zoneLayer&&s){const ls=Object.entries(layers).filter(([z])=>C.byZ[z]&&C.byZ[z].svy===s).map(a=>a[1]);if(ls.length)map.fitBounds(L.featureGroup(ls).getBounds())}
-  else if(map&&zoneLayer)map.fitBounds(zoneLayer.getBounds())}
+function zoomFilter(){
+  if(!map)return;
+  if(st.kec&&BAT){const f=BAT.kec.features.find(f=>f.properties.n===st.kec);if(f){map.fitBounds(L.geoJSON(f).getBounds());return}}
+  if(st.desa){const ps=C.points.filter(visP).filter(p=>p.x&&p.y).map(p=>[p.y,p.x]);if(ps.length){map.fitBounds(L.latLngBounds(ps).pad(.2));return}}
+  if(zoneLayer){const ls=Object.entries(layers).filter(([z])=>C.byZ[z]&&vis(C.byZ[z])).map(a=>a[1]);
+    if(ls.length&&ls.length<Object.keys(layers).length)map.fitBounds(L.featureGroup(ls).getBounds());else map.fitBounds(zoneLayer.getBounds())}
+}
+function applyFilter(){side();restyle();drawPts();legend();rekap();zoomFilter()}
+function setSvy(s){st.svy=s;applyFilter()}
+function setKec(k){st.kec=k;st.desa='';applyFilter()}
+function setDesa(d){st.desa=d;applyFilter()}
+function resetAll(){st.svy='';st.kec='';st.desa='';applyFilter()}
 function setView(v){st.view=v;document.body.className='v-'+v;document.querySelectorAll('[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));if(map)setTimeout(()=>map.invalidateSize(),50)}
 document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>setView(b.dataset.v));
-$('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend()};
+$('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend();drawLabels()};
 $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
 $('#mzon').onchange=e=>{st.zon=e.target.checked;showZon()};
-$('#mlab').onchange=e=>{st.lab=e.target.checked;drawLabels()};
+$('#mlab').onchange=e=>{st.labm=e.target.value;drawLabels()};
+$('#bkec').onchange=e=>{st.bkec=e.target.checked;showBatas()};
+$('#bdesa').onchange=e=>{st.bdesa=e.target.checked;showBatas()};
 $('#aoiA').onchange=e=>{st.aoiA=e.target.checked;showAoi()};
 $('#aoiB').onchange=e=>{st.aoiB=e.target.checked;showAoi()};
 $('#aoiZ').onclick=()=>{const ls=['A','B'].filter(k=>aoiLayer[k]&&st['aoi'+k]).map(k=>aoiLayer[k]);if(!ls.length){$('#aoiB').checked=true;st.aoiB=true;showAoi();ls.push(aoiLayer.B)}if(ls[0]&&map)map.fitBounds(L.featureGroup(ls).getBounds())};
@@ -400,7 +497,7 @@ function dl(name,rows){
 function csvZona(){const rows=[['No. Zona','Penggunaan','Surveyor','Luas (ha)','Target','Jumlah titik','Capaian','QC','RSD (%)']];
   C.zones.filter(vis).sort((a,b)=>zsort(a.zona,b.zona)).forEach(z=>rows.push([z.zona,z.guna,z.svy,+z.ha.toFixed(2),z.target,z.n,z.cap,z.qc,z.rsd==null?'':+z.rsd.toFixed(2)]));dl('zona_pangandaran.csv',rows)}
 function csvTitik(){const rows=[['No. Sampel','Surveyor','Jenis data','Zona','Tgl pelaksanaan','Tgl transaksi','Nilai tanah (Rp/m2)','Kecamatan','X','Y']];
-  C.points.filter(p=>!st.svy||p.svy===st.svy).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(p=>rows.push([p.no,p.svy,p.jenis,p.zona,p.tp,p.tt,p.nilai,p.kec,p.x,p.y]));dl('titik_pangandaran.csv',rows)}
+  C.points.filter(visP).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(p=>rows.push([p.no,p.svy,p.jenis,p.zona,p.tp,p.tt,p.nilai,p.kec,p.x,p.y]));dl('titik_pangandaran.csv',rows)}
 
 /* ---------- muat DBF manual ---------- */
 function parseDBF(buf){const dv=new DataView(buf),u8=new Uint8Array(buf),n=dv.getUint32(4,true),hl=dv.getUint16(8,true),rl=dv.getUint16(10,true),dec=new TextDecoder('latin1');
@@ -412,7 +509,7 @@ $('#pick').onclick=()=>$('#fileInput').click();
 $('#fileInput').onchange=async e=>{
   let zones=null,points=null;
   for(const f of e.target.files){try{const d=parseDBF(await f.arrayBuffer()),has=k=>d.fields.includes(k);
-    if(has('Nomor_Samp')&&has('Tanggal_Pe'))points=d.rows.filter(okKab).map(r=>({no:r.Nomor_Samp==null?null:Math.round(r.Nomor_Samp),svy:r.Nama_Surve||'',tp:r.Tanggal_Pe||'',tt:r.Tanggal__1||'',jenis:r.Jenis_Data||'',zona:r.HISTZONE||'',nilai:r.Nilai_Ta_1||0,kec:r.Kecamatan||'',x:r.X||0,y:r.Y||0}));
+    if(has('Nomor_Samp')&&has('Tanggal_Pe'))points=d.rows.filter(okKab).map(r=>({no:r.Nomor_Samp==null?null:Math.round(r.Nomor_Samp),svy:r.Nama_Surve||'',tp:r.Tanggal_Pe||'',tt:r.Tanggal__1||'',jenis:r.Jenis_Data||'',zona:r.HISTZONE||'',nilai:r.Nilai_Ta_1||0,kec:(r.Kecamatan||'').replace('Kecamatan ','').trim(),desa:(r.Kelurahan||'').trim(),luasT:r.Luas_tanah||0,jalan:r.Kelas_Jala||'',akses:r.Aksesibili||'',jns:r.Jenis||'',x:r.X||0,y:r.Y||0}));
     else if(has('HISTZONE'))zones=d.rows.filter(okKab).map(r=>({zona:r.HISTZONE||'',guna:r.PENGGUNAAN||'',luas:r.Luas_M2||r.Shape_Area||0,n:has('Jml_Titik')?r.Jml_Titik:null,rsd:has('RSD_Persen')?r.RSD_Persen:null,svy:r.Surveyor||''}))}catch(err){}}
   if(!zones&&!points)return;
   DB={...DB,zones:zones||DB.zones,points:points||DB.points,updated:'file manual '+new Date().toLocaleString('id-ID')};

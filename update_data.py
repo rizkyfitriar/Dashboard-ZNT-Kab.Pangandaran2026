@@ -49,7 +49,8 @@ def main():
                 no = r.get('Nomor_Samp')
                 points.append({'no': None if no is None else round(no), 'svy': r.get('Nama_Surve') or '',
                     'tp': r.get('Tanggal_Pe') or '', 'tt': r.get('Tanggal__1') or '', 'jenis': r.get('Jenis_Data') or '',
-                    'zona': r.get('HISTZONE') or '', 'nilai': r.get('Nilai_Ta_1') or 0, 'kec': r.get('Kecamatan') or '',
+                    'zona': r.get('HISTZONE') or '', 'nilai': r.get('Nilai_Ta_1') or 0, 'kec': (r.get('Kecamatan') or '').replace('Kecamatan ', '').strip(), 'desa': (r.get('Kelurahan') or '').strip(),
+                    'luasT': r.get('Luas_tanah') or 0, 'jalan': r.get('Kelas_Jala') or '', 'akses': r.get('Aksesibili') or '', 'jns': r.get('Jenis') or '',
                     'x': r.get('X') or 0, 'y': r.get('Y') or 0})
         elif 'HISTZONE' in names:
             kind = 'SHP'
@@ -59,6 +60,7 @@ def main():
                     'luas': r.get('Luas_M2') or r.get('Shape_Area') or 0,
                     'n': r.get('Jml_Titik') if 'Jml_Titik' in names else None,
                     'rsd': r.get('RSD_Persen') if 'RSD_Persen' in names else None,
+                    'rata': r.get('Rata_Nilai') if 'Rata_Nilai' in names else None,
                     'svy': r.get('Surveyor') or ''})
         else:
             print('Dilewati (bukan SHP/POIN):', base); continue
