@@ -81,6 +81,12 @@ svg.chart line{stroke:var(--line)}
 .leaflet-popup-content{font-family:var(--sans);font-size:12.5px;margin:10px 12px}
 .leaflet-popup-content table{font-size:12px}.leaflet-popup-content th,.leaflet-popup-content td{padding:3px 6px}
 .leaflet-container{font-family:var(--sans)}
+.pop{min-width:270px}.ph{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:8px;font-size:14px}.pbar{width:4px;height:18px;border-radius:2px}
+.pr{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:12.5px}.pr span{color:var(--muted)}.pr b{font-weight:500;text-align:right}
+.pq{border-top:1px solid var(--line);margin-top:6px;padding-top:6px}.pt{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--accent);margin-bottom:2px}
+details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6px}
+.sync .row{margin-top:8px}.sync .btn{flex:1 1 130px}.sdot{width:9px;height:9px;border-radius:50%;background:var(--good);display:inline-block}
+.sync.busy .sdot{background:var(--warn)}.sync.err .sdot{background:var(--bad)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--ink)}
 #fileInput{display:none}
 @media (max-width:900px){.main{grid-template-columns:1fr}.mapcol{position:static;order:-1}#map{height:60vh;min-height:340px}}
@@ -170,6 +176,10 @@ function side(){
    <div class="chips">${chips}</div>
    <div class="row" style="margin-top:10px"><input type="search" id="fz" list="zl" placeholder="Cari nomor zona, mis. 236P" style="flex:1"><datalist id="zl">${C.zones.map(z=>`<option value="${esc(z.zona)}">`).join('')}</datalist><button class="btn ghost" id="fzb">Cari</button></div>
   </div>
+  <div class="card sync" id="sync"><h2>Sinkronisasi data</h2>
+   <div class="row" style="justify-content:space-between"><span><i class="sdot"></i> Data spasial ZNT dan titik terhubung</span></div>
+   <div class="sub" id="syncmsg" style="margin-top:4px">${esc(syncText())}</div>
+   <div class="row"><button class="btn" id="bsync">Sinkronkan data</button><button class="btn ghost" id="bcsvz">Unduh CSV zona</button><button class="btn ghost" id="bcsvp">Unduh CSV titik</button><button class="btn ghost" id="bopen">Buka file DBF</button></div></div>
   <div class="card"><h2>Status zona</h2>
    <div class="big">${fmt(pct(selesai,tz),1)}%</div><div class="bar"><i style="width:${pct(selesai,tz)}%"></i></div>
    <div class="sub">${fmt(selesai)} dari ${fmt(tz)} zona mencapai target titik</div>
@@ -194,6 +204,7 @@ function side(){
    <div class="row" style="margin-top:6px"><span class="pill ${P.filter(p=>!p.zona).length?'warn':'good'}">${P.filter(p=>!p.zona).length}</span><span>titik tanpa zona</span></div></div>
   <div class="card"><h2>Log sampel terbaru</h2>
    <div class="log">${P.slice().sort((a,b)=>(b.tp||'').localeCompare(a.tp||'')||(b.no||0)-(a.no||0)).slice(0,20).map(p=>`<div data-pz="${esc(p.zona)}" data-pn="${p.no}"><b>#${p.no} &middot; ${esc(p.zona||'tanpa zona')}</b><span>${esc(p.svy.split(' ')[0])} &middot; ${esc(p.jenis)} &middot; ${fdate(p.tp)}</span></div>`).join('')||'<div>Belum ada data.</div>'}</div></div>`;
+  $('#bsync').onclick=syncNow;$('#bcsvz').onclick=csvZona;$('#bcsvp').onclick=csvTitik;$('#bopen').onclick=()=>$('#fileInput').click();
   $('#fsvy').onchange=e=>setSvy(e.target.value);$('#reset').onclick=()=>setSvy('');
   document.querySelectorAll('.chipb').forEach(b=>b.onclick=()=>setSvy(st.svy===b.dataset.s?'':b.dataset.s));
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.trend=+b.dataset.t;side()});
@@ -237,7 +248,7 @@ function initMap(){
       l.on('mouseover',()=>{l.setStyle({weight:3,color:css('--ink')});l.bringToFront()});
       l.on('mouseout',()=>l.setStyle(zstyle(f)));
       l.bindTooltip(()=>tip(f.properties.z),{sticky:true});
-      l.bindPopup(()=>popup(f.properties.z),{maxWidth:380});
+      l.bindPopup(()=>popup(f.properties.z),{maxWidth:420,minWidth:300,autoPanPadding:[20,20]});
     }}).addTo(map);
     map.fitBounds(zoneLayer.getBounds());
   }
@@ -251,12 +262,21 @@ function zcolor(z){if(!z)return css('--line');
 function zstyle(f){const z=C.byZ[f.properties.z];const on=!z||vis(z);
   return {color:css('--surface'),weight:.7,fillColor:zcolor(z),fillOpacity:on?.72:.08,opacity:on?1:.2}}
 function tip(zn){const z=C.byZ[zn];if(!z)return `Zona ${esc(zn)}`;return `<b>Zona ${esc(zn)}</b> &middot; ${esc(z.svy)}<br>Titik ${z.n} dari ${z.target} &middot; ${z.cap}${z.rsd!=null?` &middot; RSD ${fmt(z.rsd,1)}%`:''}`}
-function popup(zn){const z=C.byZ[zn];if(!z)return `Zona ${esc(zn)}: belum ada data SHP.`;
+function popup(zn){const z=C.byZ[zn];if(!z)return `<b>Zona ${esc(zn)}</b><br>Belum ada data SHP untuk zona ini.`;
   const pts=C.points.filter(p=>p.zona===zn).sort((a,b)=>(a.no||0)-(b.no||0));
-  return `<b>Zona ${esc(zn)}</b> ${esc(z.guna)}<br>${esc(z.svy)} &middot; ${fmt(z.ha,1)} ha<br>
-  <span class="pill ${z.cap==='Selesai'?'good':z.cap==='Proses'?'warn':'bad'}">${z.cap}</span> <span class="pill ${z.qc==='Valid'?'good':z.qc==='Revisi'?'rsd':z.qc==='Kurang'?'warn':'none'}">QC ${z.qc}</span>
-  <br>Titik ${z.n} dari target ${z.target}${z.rsd!=null?` &middot; RSD ${fmt(z.rsd,1)}%`:''}
-  ${pts.length?`<div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div>`:''}`}
+  const v=pts.filter(p=>p.nilai>0),mean=v.length?v.reduce((a,p)=>a+p.nilai,0)/v.length:null;
+  const surplus=Math.max(z.n-z.target,0);
+  const badge=z.cap==='Selesai'?`<span class="pill good">Target Selesai (${Math.min(z.n,z.target)}/${z.target})${surplus?` (+${surplus} surplus)`:''}</span>`:z.cap==='Proses'?`<span class="pill warn">Proses (${z.n}/${z.target})</span>`:`<span class="pill bad">Belum Survei (0/${z.target})</span>`;
+  const kat=z.ha<=900?'< 900 Ha':z.ha<=1250?'900 - 1250 Ha':'> 1250 Ha';
+  const jc={};pts.forEach(p=>jc[p.jenis]=(jc[p.jenis]||0)+1);
+  const jenis=Object.entries(jc).map(([k,n])=>`${esc(k)} ${n}`).join(' &middot; ')||'-';
+  const qcb=z.qc==='Valid'?`<span class="pill good">Valid (RSD ${fmt(z.rsd,2)}% &le; 30%)</span>`:z.qc==='Revisi'?`<span class="pill warn">Perlu Revisi (RSD ${fmt(z.rsd,2)}% &gt; batas 30%)</span>`:z.qc==='Kurang'?`<span class="pill warn">Sampel Kurang (${z.n} titik, minimal 3)</span>`:`<span class="pill none">Belum Survei</span>`;
+  const r=(k,val)=>`<div class="pr"><span>${k}</span><b>${val}</b></div>`;
+  return `<div class="pop"><div class="ph"><span class="pbar" style="background:${svyCol(z.svy)}"></span><b>Zona ${esc(zn)}</b>${badge}</div>
+  ${r('Surveyor Wilayah',`<span style="color:${svyCol(z.svy)}">${esc(z.svy)}</span>`)}${r('Luasan Zona',fmt(z.ha,2)+' Ha')}${r('Kategori Target',kat)}${r('Target Wajib',z.target+' Titik Sampel')}
+  ${r('Titik di Lapangan',pts.length+' Titik')}${r('Dihitung untuk Target',Math.min(z.n,z.target)+' / '+z.target+' Titik')}${r('Penggunaan Tanah',esc(z.guna||'-'))}${r('Jenis Data',jenis)}
+  <div class="pq"><div class="pt">QUALITY CONTROL (SIPENTA)</div>${r('Status QC',qcb)}${r('Rata-rata Nilai',mean==null?'-':'Rp '+fmt(mean)+' / m²')}${r('RSD / Variasi',z.rsd==null?'-':fmt(z.rsd,2)+'%')}</div>
+  ${pts.length?`<details><summary>Daftar titik (${pts.length})</summary><div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>`}
 function drawPts(){
   if(!ptLayer)return;ptLayer.clearLayers();ptMarkers={};
   if(st.pts)C.points.forEach(p=>{if(!p.x||!p.y)return;if(st.svy&&p.svy!==st.svy)return;
@@ -330,6 +350,26 @@ $('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend()};
 $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
 $('#mlab').onchange=e=>{st.lab=e.target.checked;drawLabels()};
 
+/* ---------- sinkronisasi dan unduh ---------- */
+let lastSync=new Date();
+function syncText(){const t=lastSync.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});return 'Terakhir dimuat '+t+(DB.updated?' · data per '+DB.updated:'')}
+function syncNow(){
+  const box=$('#sync'),msg=$('#syncmsg');box.className='card sync busy';msg.textContent='Mengambil data terbaru...';
+  const old=window.DATA&&window.DATA.updated,sc=document.createElement('script');
+  sc.src='data.js?t='+Date.now();
+  sc.onload=()=>{sc.remove();DB=window.DATA||DB;lastSync=new Date();refresh();const m=$('#syncmsg');if(m)m.textContent=(DB.updated===old?'Sudah data terbaru. ':'Data diperbarui. ')+syncText()};
+  sc.onerror=()=>{sc.remove();box.className='card sync err';msg.textContent='Gagal mengambil data.js. Cek koneksi atau pastikan file data.js ada di hosting.'};
+  document.body.appendChild(sc);
+}
+function dl(name,rows){
+  const csv='\ufeff'+rows.map(r=>r.map(v=>{v=v==null?'':String(v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
+function csvZona(){const rows=[['No. Zona','Penggunaan','Surveyor','Luas (ha)','Target','Jumlah titik','Capaian','QC','RSD (%)']];
+  C.zones.filter(vis).sort((a,b)=>zsort(a.zona,b.zona)).forEach(z=>rows.push([z.zona,z.guna,z.svy,+z.ha.toFixed(2),z.target,z.n,z.cap,z.qc,z.rsd==null?'':+z.rsd.toFixed(2)]));dl('zona_pangandaran.csv',rows)}
+function csvTitik(){const rows=[['No. Sampel','Surveyor','Jenis data','Zona','Tgl pelaksanaan','Tgl transaksi','Nilai tanah (Rp/m2)','Kecamatan','X','Y']];
+  C.points.filter(p=>!st.svy||p.svy===st.svy).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(p=>rows.push([p.no,p.svy,p.jenis,p.zona,p.tp,p.tt,p.nilai,p.kec,p.x,p.y]));dl('titik_pangandaran.csv',rows)}
+
 /* ---------- muat DBF manual ---------- */
 function parseDBF(buf){const dv=new DataView(buf),u8=new Uint8Array(buf),n=dv.getUint32(4,true),hl=dv.getUint16(8,true),rl=dv.getUint16(10,true),dec=new TextDecoder('latin1');
   const f=[];let o=32;while(o<hl-1&&u8[o]!==0x0D){f.push({name:dec.decode(u8.subarray(o,o+11)).split('\0')[0],type:String.fromCharCode(u8[o+11]),len:u8[o+16]});o+=32}
@@ -346,7 +386,7 @@ $('#fileInput').onchange=async e=>{
   DB={...DB,zones:zones||DB.zones,points:points||DB.points,updated:'file manual '+new Date().toLocaleString('id-ID')};
   refresh();e.target.value='';
 };
-function refresh(){C=compute();$('#stamp').textContent=stampText();side();restyle();drawPts();legend();rekap()}
+function refresh(){C=compute();lastSync=lastSync||new Date();$('#stamp').textContent=stampText();side();restyle();drawPts();legend();rekap()}
 function stampText(){const d=C.points.map(p=>p.tp).filter(Boolean).sort();return (d.length?`Pelaksanaan terakhir: ${d[d.length-1]}`:'')+(DB.updated?` · Data diperbarui ${DB.updated}`:'')}
 
 setView('split');
