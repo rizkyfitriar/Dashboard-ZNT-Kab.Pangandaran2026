@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dashboard ZNT Pangandaran 2026</title>
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: header + (panel kiri berisi ringkasan | peta kanan), lalu tabel rekap di bawah. Palet: kertas survei + tinta teal. */
+:root{--bg:#f3f4f1;--surface:#fff;--ink:#1c2a2b;--muted:#5c6b6c;--line:#dde1dc;--accent:#0f5c5e;--accent-ink:#fff;--good:#1f7a4d;--warn:#b07400;--bad:#b3362f;--rsd:#8e3b8f;--none:#8a9694;--chip:#e6ece9;
+--sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;--hh:56px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121819;--surface:#1a2223;--ink:#e4ebe9;--muted:#93a3a2;--line:#2b3637;--accent:#5fc2bd;--accent-ink:#0b1415;--good:#59c28d;--warn:#e0a63d;--bad:#ef7a72;--rsd:#c78bc9;--none:#6f7f7d;--chip:#243030;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121819;--surface:#1a2223;--ink:#e4ebe9;--muted:#93a3a2;--line:#2b3637;--accent:#5fc2bd;--accent-ink:#0b1415;--good:#59c28d;--warn:#e0a63d;--bad:#ef7a72;--rsd:#c78bc9;--none:#6f7f7d;--chip:#243030;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000}
+.hin{max-width:1600px;margin:0 auto;min-height:var(--hh);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;padding-block:8px}
+h1{font-size:17px;margin:0;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.hbtns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn{font:inherit;font-size:13px;font-weight:500;background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);border-radius:6px;padding:6px 12px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.seg{display:inline-flex}.seg .btn{border-radius:0;margin-left:-1px}.seg .btn:first-child{border-radius:6px 0 0 6px;margin:0}.seg .btn:last-child{border-radius:0 6px 6px 0}
+.btn:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible,tr[data-z]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.main{max-width:1600px;margin:0 auto;padding-block:14px;display:grid;grid-template-columns:minmax(320px,410px) minmax(0,1fr);gap:14px;align-items:start}
+body.v-peta .side,body.v-peta .rekap{display:none}body.v-peta .main{grid-template-columns:1fr}
+body.v-data .mapcol{display:none}body.v-data .main{grid-template-columns:1fr}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.card h2{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+select,input[type=search]{font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+.big{font-family:var(--mono);font-size:30px;font-weight:500;line-height:1}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-block:8px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-top:10px}
+.stat{border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.stat b{display:block;font-family:var(--mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chipb{font:inherit;font-size:12px;background:var(--chip);color:var(--ink);border:1px solid transparent;border-radius:999px;padding:3px 10px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.chipb.on{border-color:var(--accent);font-weight:600}
+.note{font-size:12px;color:var(--muted);margin:8px 0 0}
+.mapcol{min-width:0;position:sticky;top:calc(var(--hh) + 8px)}
+.mtool{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px;font-size:13px;color:var(--muted)}
+#map{height:calc(100vh - var(--hh) - 130px);min-height:420px;border:1px solid var(--line);border-radius:8px;background:var(--chip);z-index:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.scroll{overflow-x:auto;max-height:520px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:13px}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--chip);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);z-index:1}
+td.n,th.n{text-align:right}
+tr.tot td{font-weight:600;background:var(--chip)}
+tr[data-z]{cursor:pointer}tr[data-z]:hover td{background:var(--chip)}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:500}
+.pill.good{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.pill.rsd{color:var(--rsd);background:color-mix(in srgb,var(--rsd) 14%,transparent)}
+.pill.none{color:var(--muted);background:var(--chip)}
+.rekap{max-width:1600px;margin:0 auto;padding-bottom:40px}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.tab{font:inherit;background:none;border:0;border-bottom:2px solid transparent;padding:9px 12px;cursor:pointer;color:var(--muted);white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--accent);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px;padding:14px}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.tools p{margin:0;color:var(--muted);font-size:13px;flex:1 1 260px;min-width:0}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+.log{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
+.log div{padding:6px 10px;border-bottom:1px solid var(--line);font-size:12.5px;display:flex;justify-content:space-between;gap:10px;cursor:pointer}
+.log div:last-child{border:0}.log div:hover{background:var(--chip)}
+.log span{color:var(--muted);white-space:nowrap}
+svg.chart text{fill:var(--muted);font-size:9px;font-family:var(--mono)}
+svg.chart line{stroke:var(--line)}
+.leaflet-popup-content{font-family:var(--sans);font-size:12.5px;margin:10px 12px}
+.leaflet-popup-content table{font-size:12px}.leaflet-popup-content th,.leaflet-popup-content td{padding:3px 6px}
+.leaflet-container{font-family:var(--sans)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--ink)}
+#fileInput{display:none}
+@media (max-width:900px){.main{grid-template-columns:1fr}.mapcol{position:static;order:-1}#map{height:60vh;min-height:340px}}
+</style>
+</head>
+<body>
+<header class="gut"><div class="hin">
+ <div><h1>Dashboard ZNT Kab. Pangandaran 2026</h1><div class="sub" id="stamp">Memuat data...</div></div>
+ <div class="hbtns">
+  <div class="seg" role="group" aria-label="Tampilan"><button class="btn ghost" data-v="split">Peta + Data</button><button class="btn ghost" data-v="peta">Peta</button><button class="btn ghost" data-v="data">Data</button></div>
+  <button class="btn ghost" id="pick">Muat file DBF</button><input type="file" id="fileInput" accept=".dbf" multiple>
+ </div>
+</div></header>
+
+<div class="main gut">
+ <aside class="side" id="side"></aside>
+ <section class="mapcol">
+  <div class="mtool">
+   <label>Warna zona <select id="mmode"><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></label>
+   <label><input type="checkbox" id="mpts" checked> Titik sampel</label>
+   <label><input type="checkbox" id="mlab"> Nomor zona</label>
+  </div>
+  <div id="map"></div>
+  <div class="legend" id="legend"></div>
+ </section>
+</div>
+
+<section class="rekap gut" id="rekap"></section>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="zona_geo.js"></script>
+<script src="data.js"></script>
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(x,d=0)=>x==null||isNaN(x)?'':x.toLocaleString('id-ID',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=(a,b)=>b?a/b*100:0;
+const UNK='(belum ditentukan)';
+let DB=window.DATA||{zones:[],points:[],svymap:{}};
+const GEO=window.ZONA_GEO;
+const st={svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
+const SVY_COL=['#2f7fb8','#d0802c','#7a5aa6','#3a9b6a','#b8465a'];
+
+/* ---------- hitung ---------- */
+const targetOf=ha=>ha<=900?3:ha<=1250?4:5;
+function compute(){
+  const valid={},psv={};
+  DB.points.forEach(p=>{if(p.nilai>0)valid[p.zona]=(valid[p.zona]||0)+1;const o=psv[p.zona]=psv[p.zona]||{};o[p.svy]=(o[p.svy]||0)+1});
+  const vals={};DB.points.forEach(p=>{if(p.nilai>0)(vals[p.zona]=vals[p.zona]||[]).push(p.nilai)});
+  const zones=DB.zones.map(z=>{
+    const ha=z.luas/10000,target=targetOf(ha),n=z.n!=null?z.n:(valid[z.zona]||0);
+    let rsd=z.rsd;
+    if(rsd==null&&vals[z.zona]&&vals[z.zona].length>=3){const a=vals[z.zona],m=a.reduce((s,x)=>s+x,0)/a.length;rsd=Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1))/m*100}
+    let svy=(z.svy&&z.svy!=='-')?z.svy:(DB.svymap&&DB.svymap[z.zona])||'';
+    if(!svy&&psv[z.zona])svy=Object.entries(psv[z.zona]).sort((a,b)=>b[1]-a[1])[0][0];
+    const cap=n>=target?'Selesai':n>0?'Proses':'Belum';
+    const qc=n===0?'Belum':n<3?'Kurang':(rsd!=null&&rsd>30)?'Revisi':'Valid';
+    return {...z,ha,target,n,rsd,svy:svy||UNK,cap,qc,kurang:Math.max(target-n,0)};
+  });
+  const byZ={};zones.forEach(z=>byZ[z.zona]=z);
+  const svys=[...new Set(zones.map(z=>z.svy))].filter(s=>s!==UNK).sort();
+  return {zones,byZ,svys,points:DB.points};
+}
+let C=compute();
+const svyCol=s=>{const i=C.svys.indexOf(s);return i<0?css('--none'):SVY_COL[i%SVY_COL.length]};
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+const CAP_COL={Selesai:'--good',Proses:'--warn',Belum:'--bad'},QC_COL={Valid:'--good',Revisi:'--rsd',Kurang:'--warn',Belum:'--none'};
+const vis=z=>!st.svy||z.svy===st.svy;
+const zsort=(a,b)=>parseInt(a)-parseInt(b)||String(a).localeCompare(b);
+const fdate=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
+
+/* ---------- panel kiri ---------- */
+function statsHtml(items){return `<div class="stats">${items.map(i=>`<div class="stat"><b>${fmt(i[1])}</b><span><i class="dot" style="background:${i[2]}"></i>${i[0]}</span></div>`).join('')}</div>`}
+function side(){
+  const Z=C.zones.filter(vis),P=C.points.filter(p=>!st.svy||p.svy===st.svy);
+  const tz=Z.length,cnt=k=>Z.filter(z=>z.cap===k).length,q=k=>Z.filter(z=>z.qc===k).length;
+  const tot=Z.reduce((s,z)=>s+z.target,0),ok=Z.reduce((s,z)=>s+Math.min(z.n,z.target),0);
+  const selesai=cnt('Selesai'),proses=cnt('Proses'),belum=cnt('Belum');
+  const nValid=q('Valid');
+  const chips=C.svys.map(s=>`<button class="chipb ${st.svy===s?'on':''}" data-s="${esc(s)}"><i class="dot" style="background:${svyCol(s)}"></i>${esc(s)}</button>`).join('')+(C.zones.some(z=>z.svy===UNK)?`<button class="chipb ${st.svy===UNK?'on':''}" data-s="${UNK}"><i class="dot" style="background:var(--none)"></i>${UNK}</button>`:'');
+  const sama=P.filter(p=>p.jenis==='Transaksi'&&p.tp&&p.tp===p.tt).length;
+  const by=C.svys.concat(C.zones.some(z=>z.svy===UNK)?[UNK]:[]).map(s=>{const zz=C.zones.filter(z=>z.svy===s);return {s,zona:zz.length,target:zz.reduce((a,z)=>a+z.target,0),ok:zz.reduce((a,z)=>a+Math.min(z.n,z.target),0),sel:zz.filter(z=>z.cap==='Selesai').length,bel:zz.filter(z=>z.cap==='Belum').length}});
+  $('#side').innerHTML=`
+  <div class="card"><h2>Filter surveyor</h2>
+   <div class="row"><select id="fsvy" style="flex:1"><option value="">Semua surveyor</option>${C.svys.concat(C.zones.some(z=>z.svy===UNK)?[UNK]:[]).map(s=>`<option ${st.svy===s?'selected':''}>${esc(s)}</option>`).join('')}</select><button class="btn ghost" id="reset">Reset</button></div>
+   <div class="chips">${chips}</div>
+   <div class="row" style="margin-top:10px"><input type="search" id="fz" list="zl" placeholder="Cari nomor zona, mis. 236P" style="flex:1"><datalist id="zl">${C.zones.map(z=>`<option value="${esc(z.zona)}">`).join('')}</datalist><button class="btn ghost" id="fzb">Cari</button></div>
+  </div>
+  <div class="card"><h2>Status zona</h2>
+   <div class="big">${fmt(pct(selesai,tz),1)}%</div><div class="bar"><i style="width:${pct(selesai,tz)}%"></i></div>
+   <div class="sub">${fmt(selesai)} dari ${fmt(tz)} zona mencapai target titik</div>
+   ${statsHtml([['Selesai',selesai,'var(--good)'],['Proses',proses,'var(--warn)'],['Belum',belum,'var(--bad)']])}
+   <p class="note">Target titik per zona menurut luas: sampai 900 ha = 3, 901 sampai 1250 ha = 4, di atas 1250 ha = 5.</p></div>
+  <div class="card"><h2>Kualitas data (QC)</h2>
+   <div class="big">${fmt(pct(nValid,tz),1)}%</div><div class="bar"><i style="width:${pct(nValid,tz)}%"></i></div>
+   <div class="sub">${fmt(nValid)} zona valid dari ${fmt(tz)} zona</div>
+   ${statsHtml([['Valid',nValid,'var(--good)'],['Revisi',q('Revisi'),'var(--rsd)'],['Kurang',q('Kurang'),'var(--warn)'],['Belum',q('Belum'),'var(--none)']])}
+   <p class="note">Valid bila RSD 30% atau kurang dengan minimal 3 titik. Revisi bila RSD di atas 30%. Kurang bila titik 1 atau 2.</p></div>
+  <div class="card"><h2>Capaian titik aktual</h2>
+   <div class="big">${fmt(pct(ok,tot),1)}%</div><div class="bar"><i style="width:${pct(ok,tot)}%"></i></div>
+   <div class="sub">${fmt(ok)} dari ${fmt(tot)} titik target terpenuhi</div>
+   ${statsHtml([['Sisa target',tot-ok,'var(--bad)'],['Total target',tot,'var(--none)'],['Titik fisik',P.length,'var(--accent)']])}</div>
+  <div class="card"><h2>Progres per surveyor</h2><div class="scroll" style="max-height:none"><table><thead><tr><th>Surveyor</th><th class="n">Zona</th><th class="n">Selesai</th><th class="n">Belum</th><th class="n">% titik</th></tr></thead><tbody>${by.map(r=>`<tr><td><i class="dot" style="background:${svyCol(r.s)}"></i> ${esc(r.s)}</td><td class="n">${r.zona}</td><td class="n">${r.sel}</td><td class="n">${r.bel}</td><td class="n">${fmt(pct(r.ok,r.target),1)}%</td></tr>`).join('')}</tbody></table></div></div>
+  <div class="card"><h2>Tren harian survei lapangan</h2>
+   <div class="row" style="margin-bottom:8px"><div class="seg">${[[7,'7 hari'],[14,'14 hari'],[30,'30 hari'],[0,'Semua']].map(a=>`<button class="btn ghost ${st.trend===a[0]?'on':''}" data-t="${a[0]}">${a[1]}</button>`).join('')}</div></div>
+   ${trendSvg(P)}</div>
+  <div class="card"><h2>Pemeriksaan data</h2>
+   <div class="row"><span class="pill ${sama?'warn':'good'}">${sama}</span><span>titik Transaksi dengan tanggal transaksi sama dengan tanggal pelaksanaan</span></div>
+   <div class="row" style="margin-top:6px"><span class="pill ${P.filter(p=>!p.nilai).length?'warn':'good'}">${P.filter(p=>!(p.nilai>0)).length}</span><span>titik bernilai tanah 0 (tidak dihitung ke zona)</span></div>
+   <div class="row" style="margin-top:6px"><span class="pill ${P.filter(p=>!p.zona).length?'warn':'good'}">${P.filter(p=>!p.zona).length}</span><span>titik tanpa zona</span></div></div>
+  <div class="card"><h2>Log sampel terbaru</h2>
+   <div class="log">${P.slice().sort((a,b)=>(b.tp||'').localeCompare(a.tp||'')||(b.no||0)-(a.no||0)).slice(0,20).map(p=>`<div data-pz="${esc(p.zona)}" data-pn="${p.no}"><b>#${p.no} &middot; ${esc(p.zona||'tanpa zona')}</b><span>${esc(p.svy.split(' ')[0])} &middot; ${esc(p.jenis)} &middot; ${fdate(p.tp)}</span></div>`).join('')||'<div>Belum ada data.</div>'}</div></div>`;
+  $('#fsvy').onchange=e=>setSvy(e.target.value);$('#reset').onclick=()=>setSvy('');
+  document.querySelectorAll('.chipb').forEach(b=>b.onclick=()=>setSvy(st.svy===b.dataset.s?'':b.dataset.s));
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.trend=+b.dataset.t;side()});
+  $('#fzb').onclick=()=>focusZone($('#fz').value.trim());$('#fz').onkeydown=e=>{if(e.key==='Enter')focusZone(e.target.value.trim())};
+  document.querySelectorAll('.log [data-pz]').forEach(d=>d.onclick=()=>{focusZone(d.dataset.pz);const m=ptMarkers[d.dataset.pn];if(m)m.openPopup()});
+}
+function trendSvg(P){
+  const by={};P.forEach(p=>{if(!p.tp)return;(by[p.tp]=by[p.tp]||{})[p.svy]=((by[p.tp]||{})[p.svy]||0)+1});
+  let days=Object.keys(by).sort();if(!days.length)return '<div class="empty">Belum ada data.</div>';
+  const last=days[days.length-1];
+  if(st.trend){const d0=new Date(last+'T00:00:00');const all=[];for(let i=st.trend-1;i>=0;i--){const d=new Date(d0);d.setDate(d.getDate()-i);all.push(d.toISOString().slice(0,10))}days=all}
+  else{const a=new Date(days[0]+'T00:00:00'),b=new Date(last+'T00:00:00'),all=[];for(let d=a;d<=b;d.setDate(d.getDate()+1))all.push(d.toISOString().slice(0,10));days=all}
+  const sv=[...new Set(P.map(p=>p.svy))].sort();
+  const tot=days.map(d=>Object.values(by[d]||{}).reduce((s,x)=>s+x,0));
+  const max=Math.max(5,Math.ceil(Math.max(...tot)/5)*5);
+  const W=380,H=170,L=26,R=6,T=10,B=26,bw=(W-L-R)/days.length;
+  let g='';
+  [0,.5,1].forEach(f=>{const y=T+(H-T-B)*(1-f);g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text x="${L-4}" y="${y+3}" text-anchor="end">${Math.round(max*f)}</text>`});
+  days.forEach((d,i)=>{let y=H-B;sv.forEach(s=>{const v=(by[d]||{})[s]||0;if(!v)return;const h=v/max*(H-T-B);y-=h;g+=`<rect x="${L+i*bw+bw*.12}" y="${y}" width="${bw*.76}" height="${h}" fill="${svyCol(s)}"><title>${fdate(d)} ${esc(s)}: ${v}</title></rect>`});
+    if(tot[i]&&bw>9)g+=`<text x="${L+i*bw+bw/2}" y="${y-2}" text-anchor="middle">${tot[i]}</text>`;
+    const every=Math.ceil(days.length/9);if(i%every===0||i===days.length-1)g+=`<text x="${L+i*bw+bw/2}" y="${H-10}" text-anchor="middle">${fdate(d)}</text>`});
+  const leg=sv.map(s=>`<span style="margin-right:12px"><i class="dot" style="background:${svyCol(s)}"></i> ${esc(s)}</span>`).join('');
+  const avg=tot.reduce((a,b)=>a+b,0)/days.length;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Jumlah titik sampel per hari">${g}</svg><div class="sub">${leg}</div><div class="sub" style="margin-top:4px">Rata-rata ${fmt(avg,1)} titik per hari &middot; tertinggi ${Math.max(...tot)} titik pada ${fdate(days[tot.indexOf(Math.max(...tot))])}</div>`;
+}
+
+/* ---------- peta ---------- */
+let map,zoneLayer,ptLayer,labLayer,layers={},ptMarkers={};
+function initMap(){
+  if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">Peta tidak dapat dimuat.</div>';return}
+  map=L.map('map',{zoomControl:true,preferCanvas:true});
+  const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
+  const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri World Imagery'});
+  const esriStreet=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri, HERE, Garmin, OpenStreetMap contributors'});
+  const esriTopo=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri, HERE, Garmin, USGS, OpenStreetMap contributors'});
+  esriStreet.addTo(map);
+  L.control.layers({'Peta jalan (Esri)':esriStreet,'Topografi (Esri)':esriTopo,'Satelit (Esri)':sat,'OpenStreetMap (hanya bila online di hosting)':osm,'Tanpa peta dasar':L.layerGroup()},null,{position:'topright'}).addTo(map);
+  if(GEO){
+    zoneLayer=L.geoJSON(GEO,{renderer:L.canvas({padding:.5}),style:zstyle,onEachFeature:(f,l)=>{
+      layers[f.properties.z]=l;
+      l.on('mouseover',()=>{l.setStyle({weight:3,color:css('--ink')});l.bringToFront()});
+      l.on('mouseout',()=>l.setStyle(zstyle(f)));
+      l.bindTooltip(()=>tip(f.properties.z),{sticky:true});
+      l.bindPopup(()=>popup(f.properties.z),{maxWidth:380});
+    }}).addTo(map);
+    map.fitBounds(zoneLayer.getBounds());
+  }
+  ptLayer=L.layerGroup().addTo(map);labLayer=L.layerGroup();
+  drawPts();
+  const fit=()=>{map.invalidateSize();if(zoneLayer&&!st.svy)map.fitBounds(zoneLayer.getBounds())};
+  window.addEventListener('load',fit);setTimeout(fit,300);new ResizeObserver(()=>map.invalidateSize()).observe(document.getElementById('map'));
+}
+function zcolor(z){if(!z)return css('--line');
+  if(st.mode==='cap')return css(CAP_COL[z.cap]);if(st.mode==='qc')return css(QC_COL[z.qc]);return svyCol(z.svy)}
+function zstyle(f){const z=C.byZ[f.properties.z];const on=!z||vis(z);
+  return {color:css('--surface'),weight:.7,fillColor:zcolor(z),fillOpacity:on?.72:.08,opacity:on?1:.2}}
+function tip(zn){const z=C.byZ[zn];if(!z)return `Zona ${esc(zn)}`;return `<b>Zona ${esc(zn)}</b> &middot; ${esc(z.svy)}<br>Titik ${z.n} dari ${z.target} &middot; ${z.cap}${z.rsd!=null?` &middot; RSD ${fmt(z.rsd,1)}%`:''}`}
+function popup(zn){const z=C.byZ[zn];if(!z)return `Zona ${esc(zn)}: belum ada data SHP.`;
+  const pts=C.points.filter(p=>p.zona===zn).sort((a,b)=>(a.no||0)-(b.no||0));
+  return `<b>Zona ${esc(zn)}</b> ${esc(z.guna)}<br>${esc(z.svy)} &middot; ${fmt(z.ha,1)} ha<br>
+  <span class="pill ${z.cap==='Selesai'?'good':z.cap==='Proses'?'warn':'bad'}">${z.cap}</span> <span class="pill ${z.qc==='Valid'?'good':z.qc==='Revisi'?'rsd':z.qc==='Kurang'?'warn':'none'}">QC ${z.qc}</span>
+  <br>Titik ${z.n} dari target ${z.target}${z.rsd!=null?` &middot; RSD ${fmt(z.rsd,1)}%`:''}
+  ${pts.length?`<div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div>`:''}`}
+function drawPts(){
+  if(!ptLayer)return;ptLayer.clearLayers();ptMarkers={};
+  if(st.pts)C.points.forEach(p=>{if(!p.x||!p.y)return;if(st.svy&&p.svy!==st.svy)return;
+    const m=L.circleMarker([p.y,p.x],{radius:4,weight:1.2,color:'#fff',fillColor:svyCol(p.svy),fillOpacity:1}).bindPopup(`<b>Sampel ${p.no}</b> &middot; zona ${esc(p.zona||'-')}<br>${esc(p.svy)}<br>${esc(p.jenis)} &middot; ${esc(p.tp)}<br>${esc(p.kec)}<br>${p.nilai?`Rp ${fmt(p.nilai)}/m²`:'nilai tanah 0'}`);
+    m.addTo(ptLayer);ptMarkers[p.no]=m});
+  drawLabels();
+}
+function drawLabels(){
+  if(!labLayer)return;labLayer.clearLayers();
+  if(st.lab&&zoneLayer){Object.entries(layers).forEach(([z,l])=>{if(C.byZ[z]&&!vis(C.byZ[z]))return;L.marker(l.getBounds().getCenter(),{interactive:false,icon:L.divIcon({className:'',html:`<span style="font:600 10px var(--mono);color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff">${esc(z)}</span>`,iconSize:[0,0]})}).addTo(labLayer)});labLayer.addTo(map)}
+  else if(map)map.removeLayer(labLayer);
+}
+function restyle(){if(zoneLayer)zoneLayer.setStyle(zstyle)}
+function legend(){
+  const L2=st.mode==='svy'?C.svys.map(s=>[svyCol(s),s]).concat(C.zones.some(z=>z.svy===UNK)?[[css('--none'),UNK]]:[]):st.mode==='cap'?[['Selesai','--good'],['Proses','--warn'],['Belum','--bad']].map(a=>[css(a[1]),a[0]]):[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
+  $('#legend').innerHTML=L2.map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
+}
+function focusZone(zn){
+  const l=layers[zn];if(!l){return}
+  if(st.view==='data'){setView('split')}
+  map.fitBounds(l.getBounds(),{maxZoom:15});l.openPopup(l.getBounds().getCenter());
+  document.getElementById('map').scrollIntoView({block:'nearest'});
+}
+
+/* ---------- rekap tabel ---------- */
+function table(cols,rows){
+  if(!rows.length)return '<div class="empty">Tidak ada data.</div>';
+  return `<div class="scroll"><table><thead><tr>${cols.map(c=>`<th class="${c.n?'n':''}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr ${r.zona?`data-z="${esc(r.zona)}" tabindex="0"`:''}>`+cols.map(c=>`<td class="${c.n?'n':''}">${c.html?c.html(r):esc(c.v(r)==null?'':c.v(r))}</td>`).join('')+'</tr>').join('')}</tbody></table></div>`;
+}
+const tsv=(cols,rows)=>[cols.map(c=>c.h).join('\t'),...rows.map(r=>cols.map(c=>c.v(r)==null?'':c.v(r)).join('\t'))].join('\n');
+let COPY='';
+const TABS=[['belum','Belum survei'],['kurang','Sampel kurang'],['rsd','RSD di atas 30%'],['tgl','Tanggal transaksi'],['zona','Semua zona']];
+function rekap(){
+  let cols,rows,desc;
+  const Z=C.zones.filter(vis);
+  const zc=[{h:'No. Zona',v:r=>r.zona},{h:'Surveyor',v:r=>r.svy}];
+  if(st.tab==='belum'){rows=Z.filter(z=>z.n===0).sort((a,b)=>a.svy.localeCompare(b.svy)||zsort(a.zona,b.zona));
+    cols=[{h:'Surveyor',v:r=>r.svy},{h:'No. Zona',v:r=>r.zona},{h:'Penggunaan',v:r=>r.guna},{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(1)},{h:'Target',n:1,v:r=>r.target}];
+    const by={};rows.forEach(r=>by[r.svy]=(by[r.svy]||0)+1);desc=`${rows.length} zona belum ada titik. `+Object.entries(by).map(([s,n])=>`${esc(s)}: ${n}`).join(' &middot; ')}
+  else if(st.tab==='kurang'){rows=Z.filter(z=>z.kurang>0&&(!st.kurang||z.kurang===st.kurang)).sort((a,b)=>b.kurang-a.kurang||zsort(a.zona,b.zona));
+    cols=[...zc,{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(1)},{h:'Target',n:1,v:r=>r.target},{h:'Jumlah titik',n:1,v:r=>r.n},{h:'Kurang',n:1,v:r=>r.kurang,html:r=>`<span class="pill ${r.kurang>=3?'bad':'warn'}">kurang ${r.kurang}</span>`}];
+    desc=`${rows.length} zona masih kurang sampel (termasuk yang belum disurvei). Tampilkan <select id="kf">${[0,1,2,3,4,5].map(i=>`<option value="${i}" ${st.kurang===i?'selected':''}>${i?'Kurang '+i:'Semua'}</option>`).join('')}</select>`}
+  else if(st.tab==='rsd'){rows=Z.filter(z=>z.rsd!=null&&z.rsd>30).sort((a,b)=>b.rsd-a.rsd);
+    cols=[...zc,{h:'Jumlah titik',n:1,v:r=>r.n},{h:'RSD (%)',n:1,v:r=>+r.rsd.toFixed(2),html:r=>`<span class="pill rsd">${fmt(r.rsd,2)}</span>`}];
+    desc=`${rows.length} zona dengan RSD di atas 30% dan perlu revisi atau tambahan sampel.`}
+  else if(st.tab==='tgl'){const j=st.jenis;
+    rows=C.points.filter(p=>(!st.svy||p.svy===st.svy)&&p.tp&&p.tp===p.tt&&(j==='Semua'||p.jenis===j)).sort((a,b)=>a.svy.localeCompare(b.svy)||a.no-b.no);
+    cols=[{h:'No. Sampel',v:r=>r.no},{h:'Surveyor',v:r=>r.svy},{h:'Jenis data',v:r=>r.jenis},{h:'Zona',v:r=>r.zona},{h:'Tgl pelaksanaan',v:r=>r.tp},{h:'Keterangan',v:r=>'Tanggal transaksi sama dengan tanggal pelaksanaan'}];
+    const tot=C.points.filter(p=>j==='Semua'||p.jenis===j).length;
+    desc=`${rows.length} dari ${tot} titik berjenis ${j==='Semua'?'apa pun':j} bertanggal transaksi sama dengan tanggal pelaksanaan. Jenis <select id="jf">${['Transaksi','Individual','Penawaran','Semua'].map(x=>`<option ${x===j?'selected':''}>${x}</option>`).join('')}</select>`}
+  else{rows=Z.slice().sort((a,b)=>zsort(a.zona,b.zona));
+    cols=[{h:'No. Zona',v:r=>r.zona},{h:'Penggunaan',v:r=>r.guna},{h:'Surveyor',v:r=>r.svy},{h:'Luas (ha)',n:1,v:r=>+r.ha.toFixed(1)},{h:'Target',n:1,v:r=>r.target},{h:'Titik',n:1,v:r=>r.n},{h:'RSD (%)',n:1,v:r=>r.rsd==null?'':+r.rsd.toFixed(2)},{h:'Capaian',v:r=>r.cap},{h:'QC',v:r=>r.qc}];
+    desc=`Semua ${rows.length} zona.`}
+  COPY=tsv(cols,rows);
+  $('#rekap').innerHTML=`<div class="tabs" role="tablist">${TABS.map(t=>`<button class="tab" role="tab" data-tab="${t[0]}" aria-selected="${t[0]===st.tab}">${t[1]}</button>`).join('')}</div>
+  <div class="panel"><div class="tools"><p>${desc}</p><button class="btn ghost" id="copy">Salin untuk spreadsheet</button></div>${table(cols,rows)}<p class="note">Klik baris zona untuk melihatnya di peta.</p></div>`;
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{st.tab=b.dataset.tab;rekap()});
+  document.querySelectorAll('tr[data-z]').forEach(tr=>{const go=()=>focusZone(tr.dataset.z);tr.onclick=go;tr.onkeydown=e=>{if(e.key==='Enter')go()}});
+  const cp=$('#copy');cp.onclick=()=>{const done=()=>{cp.textContent='Tersalin'};(navigator.clipboard?navigator.clipboard.writeText(COPY):Promise.reject()).then(done).catch(()=>{const ta=document.createElement('textarea');ta.value=COPY;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){cp.textContent='Gagal menyalin'}ta.remove()})};
+  const kf=$('#kf');if(kf)kf.onchange=()=>{st.kurang=+kf.value;rekap()};
+  const jf=$('#jf');if(jf)jf.onchange=()=>{st.jenis=jf.value;rekap()};
+}
+
+/* ---------- kontrol ---------- */
+function setSvy(s){st.svy=s;side();restyle();drawPts();legend();rekap();
+  if(map&&zoneLayer&&s){const ls=Object.entries(layers).filter(([z])=>C.byZ[z]&&C.byZ[z].svy===s).map(a=>a[1]);if(ls.length)map.fitBounds(L.featureGroup(ls).getBounds())}
+  else if(map&&zoneLayer)map.fitBounds(zoneLayer.getBounds())}
+function setView(v){st.view=v;document.body.className='v-'+v;document.querySelectorAll('[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));if(map)setTimeout(()=>map.invalidateSize(),50)}
+document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+$('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend()};
+$('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
+$('#mlab').onchange=e=>{st.lab=e.target.checked;drawLabels()};
+
+/* ---------- muat DBF manual ---------- */
+function parseDBF(buf){const dv=new DataView(buf),u8=new Uint8Array(buf),n=dv.getUint32(4,true),hl=dv.getUint16(8,true),rl=dv.getUint16(10,true),dec=new TextDecoder('latin1');
+  const f=[];let o=32;while(o<hl-1&&u8[o]!==0x0D){f.push({name:dec.decode(u8.subarray(o,o+11)).split('\0')[0],type:String.fromCharCode(u8[o+11]),len:u8[o+16]});o+=32}
+  const rows=[];for(let i=0;i<n;i++){let p=hl+i*rl;if(u8[p]===0x2A)continue;p++;const r={};for(const c of f){const s=dec.decode(u8.subarray(p,p+c.len)).trim();p+=c.len;r[c.name]=(c.type==='N'||c.type==='F')?(s===''?null:parseFloat(s)):s}rows.push(r)}
+  return {fields:f.map(c=>c.name),rows}}
+const okKab=r=>!r.WADMKK||/pangandaran/i.test(r.WADMKK);
+$('#pick').onclick=()=>$('#fileInput').click();
+$('#fileInput').onchange=async e=>{
+  let zones=null,points=null;
+  for(const f of e.target.files){try{const d=parseDBF(await f.arrayBuffer()),has=k=>d.fields.includes(k);
+    if(has('Nomor_Samp')&&has('Tanggal_Pe'))points=d.rows.filter(okKab).map(r=>({no:r.Nomor_Samp==null?null:Math.round(r.Nomor_Samp),svy:r.Nama_Surve||'',tp:r.Tanggal_Pe||'',tt:r.Tanggal__1||'',jenis:r.Jenis_Data||'',zona:r.HISTZONE||'',nilai:r.Nilai_Ta_1||0,kec:r.Kecamatan||'',x:r.X||0,y:r.Y||0}));
+    else if(has('HISTZONE'))zones=d.rows.filter(okKab).map(r=>({zona:r.HISTZONE||'',guna:r.PENGGUNAAN||'',luas:r.Luas_M2||r.Shape_Area||0,n:has('Jml_Titik')?r.Jml_Titik:null,rsd:has('RSD_Persen')?r.RSD_Persen:null,svy:r.Surveyor||''}))}catch(err){}}
+  if(!zones&&!points)return;
+  DB={...DB,zones:zones||DB.zones,points:points||DB.points,updated:'file manual '+new Date().toLocaleString('id-ID')};
+  refresh();e.target.value='';
+};
+function refresh(){C=compute();$('#stamp').textContent=stampText();side();restyle();drawPts();legend();rekap()}
+function stampText(){const d=C.points.map(p=>p.tp).filter(Boolean).sort();return (d.length?`Pelaksanaan terakhir: ${d[d.length-1]}`:'')+(DB.updated?` · Data diperbarui ${DB.updated}`:'')}
+
+setView('split');
+initMap();
+refresh();
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{restyle();legend();drawPts()});
+})();
+</script>
+</body>
+</html>
