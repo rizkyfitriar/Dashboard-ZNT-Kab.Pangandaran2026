@@ -107,6 +107,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
  <section class="mapcol">
   <div class="mtool">
    <label>Warna zona <select id="mmode"><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></label>
+   <label><input type="checkbox" id="mzon" checked> Zona (SHP)</label>
    <label><input type="checkbox" id="mpts" checked> Titik sampel</label>
    <label><input type="checkbox" id="mlab"> Nomor zona</label>
    <label class="aoi"><input type="checkbox" id="aoiA"> <i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</label>
@@ -133,7 +134,7 @@ const pct=(a,b)=>b?a/b*100:0;
 const UNK='(belum ditentukan)';
 let DB=window.DATA||{zones:[],points:[],svymap:{}};
 const GEO=window.ZONA_GEO;
-const st={aoiA:false,aoiB:false,svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
+const st={zon:true,aoiA:false,aoiB:false,svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
 const SVY_COL=['#2f7fb8','#d0802c','#7a5aa6','#3a9b6a','#b8465a'];
 
 /* ---------- hitung ---------- */
@@ -309,13 +310,20 @@ function showAoi(){
   ['A','B'].forEach(k=>{const l=aoiLayer[k];if(!l||!map)return;const on=st['aoi'+k];if(on&&!map.hasLayer(l)){l.addTo(map);l.bringToFront&&l.bringToFront()}else if(!on&&map.hasLayer(l))map.removeLayer(l)});
   if(ptLayer&&st.pts)drawPts();legend();
 }
+function showZon(){
+  if(!zoneLayer||!map)return;
+  if(st.zon&&!map.hasLayer(zoneLayer)){zoneLayer.addTo(map);zoneLayer.eachLayer(l=>l.bringToBack())}
+  else if(!st.zon&&map.hasLayer(zoneLayer)){map.closePopup();map.removeLayer(zoneLayer)}
+  const m=document.getElementById('mmode');if(m)m.disabled=!st.zon;
+}
 function restyle(){if(zoneLayer)zoneLayer.setStyle(zstyle)}
 function legend(){
   const L2=st.mode==='svy'?C.svys.map(s=>[svyCol(s),s]).concat(C.zones.some(z=>z.svy===UNK)?[[css('--none'),UNK]]:[]):st.mode==='cap'?[['Selesai','--good'],['Proses','--warn'],['Belum','--bad']].map(a=>[css(a[1]),a[0]]):[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
-  $('#legend').innerHTML=L2.map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
+  $('#legend').innerHTML=(st.zon?L2:[]).map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
 }
 function focusZone(zn){
   const l=layers[zn];if(!l){return}
+  if(!st.zon){st.zon=true;$('#mzon').checked=true;showZon()}
   if(st.view==='data'){setView('split')}
   map.fitBounds(l.getBounds(),{maxZoom:15});l.openPopup(l.getBounds().getCenter());
   document.getElementById('map').scrollIntoView({block:'nearest'});
@@ -368,6 +376,7 @@ function setView(v){st.view=v;document.body.className='v-'+v;document.querySelec
 document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 $('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend()};
 $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
+$('#mzon').onchange=e=>{st.zon=e.target.checked;showZon()};
 $('#mlab').onchange=e=>{st.lab=e.target.checked;drawLabels()};
 $('#aoiA').onchange=e=>{st.aoiA=e.target.checked;showAoi()};
 $('#aoiB').onchange=e=>{st.aoiB=e.target.checked;showAoi()};
