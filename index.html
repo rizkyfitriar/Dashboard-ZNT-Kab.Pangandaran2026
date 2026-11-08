@@ -85,6 +85,7 @@ svg.chart line{stroke:var(--line)}
 .pr{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:12.5px}.pr span{color:var(--muted)}.pr b{font-weight:500;text-align:right}
 .pq{border-top:1px solid var(--line);margin-top:6px;padding-top:6px}.pt{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--accent);margin-bottom:2px}
 details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6px}
+.swatch{display:inline-block;width:16px;height:0;border-top:3px solid var(--c);vertical-align:middle;margin-right:2px}.mtool .aoi{display:inline-flex;gap:5px;align-items:center}
 .sync .row{margin-top:8px}.sync .btn{flex:1 1 130px}.sdot{width:9px;height:9px;border-radius:50%;background:var(--good);display:inline-block}
 .sync.busy .sdot{background:var(--warn)}.sync.err .sdot{background:var(--bad)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--ink)}
@@ -108,6 +109,9 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
    <label>Warna zona <select id="mmode"><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></label>
    <label><input type="checkbox" id="mpts" checked> Titik sampel</label>
    <label><input type="checkbox" id="mlab"> Nomor zona</label>
+   <label class="aoi"><input type="checkbox" id="aoiA"> <i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</label>
+   <label class="aoi"><input type="checkbox" id="aoiB"> <i class="swatch" style="--c:#0ea5e9"></i>AOI baru</label>
+   <button class="btn ghost" id="aoiZ" style="padding:3px 10px">Zoom ke AOI</button>
   </div>
   <div id="map"></div>
   <div class="legend" id="legend"></div>
@@ -118,6 +122,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
 
 <script src="leaflet/leaflet.js"></script>
 <script src="zona_geo.js"></script>
+<script src="aoi_geo.js"></script>
 <script src="data.js"></script>
 <script>
 (function(){
@@ -128,7 +133,7 @@ const pct=(a,b)=>b?a/b*100:0;
 const UNK='(belum ditentukan)';
 let DB=window.DATA||{zones:[],points:[],svymap:{}};
 const GEO=window.ZONA_GEO;
-const st={svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
+const st={aoiA:false,aoiB:false,svy:'',mode:'svy',pts:true,lab:false,tab:'belum',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
 const SVY_COL=['#2f7fb8','#d0802c','#7a5aa6','#3a9b6a','#b8465a'];
 
 /* ---------- hitung ---------- */
@@ -141,7 +146,8 @@ function compute(){
     const ha=z.luas/10000,target=targetOf(ha),n=z.n!=null?z.n:(valid[z.zona]||0);
     let rsd=z.rsd;
     if(rsd==null&&vals[z.zona]&&vals[z.zona].length>=3){const a=vals[z.zona],m=a.reduce((s,x)=>s+x,0)/a.length;rsd=Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1))/m*100}
-    let svy=(z.svy&&z.svy!=='-')?z.svy:(DB.svymap&&DB.svymap[z.zona])||'';
+    const known=[...new Set(DB.points.map(p=>p.svy).filter(Boolean))];
+    let svy=(z.svy&&z.svy!=='-')?canonSvy(z.svy,known):(DB.svymap&&DB.svymap[z.zona])||'';
     if(!svy&&psv[z.zona])svy=Object.entries(psv[z.zona]).sort((a,b)=>b[1]-a[1])[0][0];
     const cap=n>=target?'Selesai':n>0?'Proses':'Belum';
     const qc=n===0?'Belum':n<3?'Kurang':(rsd!=null&&rsd>30)?'Revisi':'Valid';
@@ -151,6 +157,8 @@ function compute(){
   const svys=[...new Set(zones.map(z=>z.svy))].filter(s=>s!==UNK).sort();
   return {zones,byZ,svys,points:DB.points};
 }
+function lev(a,b){const m=[];for(let i=0;i<=a.length;i++){m[i]=[i];for(let j=1;j<=b.length;j++)m[i][j]=i?0:j}for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
+function canonSvy(n,known){if(!n||n==='-'||known.includes(n))return n;let best=n,bd=3;known.forEach(k=>{const d=lev(n.toLowerCase(),k.toLowerCase());if(d<bd){bd=d;best=k}});return best}
 let C=compute();
 const svyCol=s=>{const i=C.svys.indexOf(s);return i<0?css('--none'):SVY_COL[i%SVY_COL.length]};
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
@@ -232,7 +240,7 @@ function trendSvg(P){
 }
 
 /* ---------- peta ---------- */
-let map,zoneLayer,ptLayer,labLayer,REND,layers={},ptMarkers={};
+let map,zoneLayer,ptLayer,labLayer,REND,layers={},ptMarkers={},aoiLayer={};
 function initMap(){
   if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">Peta tidak dapat dimuat.</div>';return}
   map=L.map('map',{zoomControl:true});
@@ -255,6 +263,11 @@ function initMap(){
   }
   map.on('popupopen',e=>{const a=e.popup.getElement().querySelector('.zlink');if(!a)return;
     a.onclick=ev=>{ev.preventDefault();const l=layers[a.dataset.z];if(!l)return;map.closePopup();l.openPopup(L.latLng(+a.dataset.lat,+a.dataset.lng))}});
+  const AOI=window.AOI;
+  if(AOI){
+    aoiLayer.A=L.geoJSON(AOI.awal,{renderer:REND,interactive:false,style:{color:'#e11d48',weight:2.2,dashArray:'6 5',fill:false}});
+    aoiLayer.B=L.geoJSON(AOI.baru,{renderer:REND,interactive:false,style:{color:'#0ea5e9',weight:2.2,fill:false}});
+  }
   ptLayer=L.layerGroup().addTo(map);labLayer=L.layerGroup();
   drawPts();
   const fit=()=>{map.invalidateSize();if(zoneLayer&&!st.svy)map.fitBounds(zoneLayer.getBounds())};
@@ -292,10 +305,14 @@ function drawLabels(){
   if(st.lab&&zoneLayer){Object.entries(layers).forEach(([z,l])=>{if(C.byZ[z]&&!vis(C.byZ[z]))return;L.marker(l.getBounds().getCenter(),{interactive:false,icon:L.divIcon({className:'',html:`<span style="font:600 10px var(--mono);color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff">${esc(z)}</span>`,iconSize:[0,0]})}).addTo(labLayer)});labLayer.addTo(map)}
   else if(map)map.removeLayer(labLayer);
 }
+function showAoi(){
+  ['A','B'].forEach(k=>{const l=aoiLayer[k];if(!l||!map)return;const on=st['aoi'+k];if(on&&!map.hasLayer(l)){l.addTo(map);l.bringToFront&&l.bringToFront()}else if(!on&&map.hasLayer(l))map.removeLayer(l)});
+  if(ptLayer&&st.pts)drawPts();legend();
+}
 function restyle(){if(zoneLayer)zoneLayer.setStyle(zstyle)}
 function legend(){
   const L2=st.mode==='svy'?C.svys.map(s=>[svyCol(s),s]).concat(C.zones.some(z=>z.svy===UNK)?[[css('--none'),UNK]]:[]):st.mode==='cap'?[['Selesai','--good'],['Proses','--warn'],['Belum','--bad']].map(a=>[css(a[1]),a[0]]):[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
-  $('#legend').innerHTML=L2.map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
+  $('#legend').innerHTML=L2.map(a=>`<span><i style="background:${a[0]}"></i>${esc(a[1])}</span>`).join('')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(p=>!st.svy||p.svy===st.svy).length)})</span>`:'');
 }
 function focusZone(zn){
   const l=layers[zn];if(!l){return}
@@ -352,6 +369,9 @@ document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>setView(b.dataset
 $('#mmode').onchange=e=>{st.mode=e.target.value;restyle();drawPts();legend()};
 $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
 $('#mlab').onchange=e=>{st.lab=e.target.checked;drawLabels()};
+$('#aoiA').onchange=e=>{st.aoiA=e.target.checked;showAoi()};
+$('#aoiB').onchange=e=>{st.aoiB=e.target.checked;showAoi()};
+$('#aoiZ').onclick=()=>{const ls=['A','B'].filter(k=>aoiLayer[k]&&st['aoi'+k]).map(k=>aoiLayer[k]);if(!ls.length){$('#aoiB').checked=true;st.aoiB=true;showAoi();ls.push(aoiLayer.B)}if(ls[0]&&map)map.fitBounds(L.featureGroup(ls).getBounds())};
 
 /* ---------- sinkronisasi dan unduh ---------- */
 let lastSync=new Date();
