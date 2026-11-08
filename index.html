@@ -209,7 +209,7 @@ function side(){
   document.querySelectorAll('.chipb').forEach(b=>b.onclick=()=>setSvy(st.svy===b.dataset.s?'':b.dataset.s));
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.trend=+b.dataset.t;side()});
   $('#fzb').onclick=()=>focusZone($('#fz').value.trim());$('#fz').onkeydown=e=>{if(e.key==='Enter')focusZone(e.target.value.trim())};
-  document.querySelectorAll('.log [data-pz]').forEach(d=>d.onclick=()=>{focusZone(d.dataset.pz);const m=ptMarkers[d.dataset.pn];if(m)m.openPopup()});
+  document.querySelectorAll('.log [data-pz]').forEach(d=>d.onclick=()=>focusZone(d.dataset.pz));
 }
 function trendSvg(P){
   const by={};P.forEach(p=>{if(!p.tp)return;(by[p.tp]=by[p.tp]||{})[p.svy]=((by[p.tp]||{})[p.svy]||0)+1});
@@ -232,10 +232,11 @@ function trendSvg(P){
 }
 
 /* ---------- peta ---------- */
-let map,zoneLayer,ptLayer,labLayer,layers={},ptMarkers={};
+let map,zoneLayer,ptLayer,labLayer,REND,layers={},ptMarkers={};
 function initMap(){
   if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">Peta tidak dapat dimuat.</div>';return}
-  map=L.map('map',{zoomControl:true,preferCanvas:true});
+  map=L.map('map',{zoomControl:true});
+  REND=L.canvas({padding:.5,tolerance:4});
   const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
   const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri World Imagery'});
   const esriStreet=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri, HERE, Garmin, OpenStreetMap contributors'});
@@ -243,7 +244,7 @@ function initMap(){
   esriStreet.addTo(map);
   L.control.layers({'Peta jalan (Esri)':esriStreet,'Topografi (Esri)':esriTopo,'Satelit (Esri)':sat,'OpenStreetMap (hanya bila online di hosting)':osm,'Tanpa peta dasar':L.layerGroup()},null,{position:'topright'}).addTo(map);
   if(GEO){
-    zoneLayer=L.geoJSON(GEO,{renderer:L.canvas({padding:.5}),style:zstyle,onEachFeature:(f,l)=>{
+    zoneLayer=L.geoJSON(GEO,{renderer:REND,style:zstyle,onEachFeature:(f,l)=>{
       layers[f.properties.z]=l;
       l.on('mouseover',()=>{l.setStyle({weight:3,color:css('--ink')});l.bringToFront()});
       l.on('mouseout',()=>l.setStyle(zstyle(f)));
@@ -252,6 +253,8 @@ function initMap(){
     }}).addTo(map);
     map.fitBounds(zoneLayer.getBounds());
   }
+  map.on('popupopen',e=>{const a=e.popup.getElement().querySelector('.zlink');if(!a)return;
+    a.onclick=ev=>{ev.preventDefault();const l=layers[a.dataset.z];if(!l)return;map.closePopup();l.openPopup(L.latLng(+a.dataset.lat,+a.dataset.lng))}});
   ptLayer=L.layerGroup().addTo(map);labLayer=L.layerGroup();
   drawPts();
   const fit=()=>{map.invalidateSize();if(zoneLayer&&!st.svy)map.fitBounds(zoneLayer.getBounds())};
@@ -276,11 +279,11 @@ function popup(zn){const z=C.byZ[zn];if(!z)return `<b>Zona ${esc(zn)}</b><br>Bel
   ${r('Surveyor Wilayah',`<span style="color:${svyCol(z.svy)}">${esc(z.svy)}</span>`)}${r('Luasan Zona',fmt(z.ha,2)+' Ha')}${r('Kategori Target',kat)}${r('Target Wajib',z.target+' Titik Sampel')}
   ${r('Titik di Lapangan',pts.length+' Titik')}${r('Dihitung untuk Target',Math.min(z.n,z.target)+' / '+z.target+' Titik')}${r('Penggunaan Tanah',esc(z.guna||'-'))}${r('Jenis Data',jenis)}
   <div class="pq"><div class="pt">QUALITY CONTROL (SIPENTA)</div>${r('Status QC',qcb)}${r('Rata-rata Nilai',mean==null?'-':'Rp '+fmt(mean)+' / m²')}${r('RSD / Variasi',z.rsd==null?'-':fmt(z.rsd,2)+'%')}</div>
-  ${pts.length?`<details><summary>Daftar titik (${pts.length})</summary><div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>`}
+  ${pts.length?`<details open><summary>Daftar titik (${pts.length})</summary><div class="scroll" style="max-height:170px;margin-top:6px"><table><thead><tr><th>No</th><th>Jenis</th><th>Tgl</th><th class="n">Rp/m²</th></tr></thead><tbody>${pts.map(p=>`<tr><td>${p.no}</td><td>${esc(p.jenis)}</td><td>${fdate(p.tp)}</td><td class="n">${fmt(p.nilai)}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>`}
 function drawPts(){
   if(!ptLayer)return;ptLayer.clearLayers();ptMarkers={};
   if(st.pts)C.points.forEach(p=>{if(!p.x||!p.y)return;if(st.svy&&p.svy!==st.svy)return;
-    const m=L.circleMarker([p.y,p.x],{radius:4,weight:1.2,color:'#fff',fillColor:svyCol(p.svy),fillOpacity:1}).bindPopup(`<b>Sampel ${p.no}</b> &middot; zona ${esc(p.zona||'-')}<br>${esc(p.svy)}<br>${esc(p.jenis)} &middot; ${esc(p.tp)}<br>${esc(p.kec)}<br>${p.nilai?`Rp ${fmt(p.nilai)}/m²`:'nilai tanah 0'}`);
+    const m=L.circleMarker([p.y,p.x],{renderer:REND,interactive:false,radius:4,weight:1.2,color:'#fff',fillColor:svyCol(p.svy),fillOpacity:1});
     m.addTo(ptLayer);ptMarkers[p.no]=m});
   drawLabels();
 }
