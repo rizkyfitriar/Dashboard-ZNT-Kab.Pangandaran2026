@@ -109,6 +109,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
  <aside class="side" id="side"></aside>
  <section class="mapcol">
   <div class="mtool">
+   <form class="mrow" id="cform" autocomplete="off"><div class="mf" style="flex:3"><span>Cari koordinat</span><input type="search" id="cq" placeholder="-7.7826765930436, 108.49918819964" inputmode="decimal"></div><button class="btn" type="submit" style="align-self:flex-end">Cari</button><button class="btn ghost" type="button" id="cclr" style="align-self:flex-end">Hapus</button><span id="cmsg" class="note" style="flex-basis:100%;margin:0"></span></form>
    <div class="mrow"><div class="mf"><span>Warnai zona berdasarkan</span><select id="mmode"><option value="nilai">Nilai tanah (8 kelas)</option><option value="delta">Perubahan nilai vs ZNT 2025</option><option value="rsd">Standar deviasi (RSD)</option><option value="jml">Sebaran sampel (jumlah titik)</option><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></div><div class="mf"><span>Label di zona</span><select id="mlab"><option value="none">Tanpa label</option><option value="zona">Nomor zona</option><option value="rata">Rata-rata nilai (Rp ribu)</option><option value="n">Jumlah titik</option><option value="rsd">RSD (%)</option><option value="delta">Perubahan vs 2025 (%)</option></select></div></div>
    <div class="mrow"><span class="mt">Lapisan</span>
     <label class="lchip"><input type="checkbox" id="mzon" checked><i class="swatch" style="--c:#2a9d8f"></i>Zona</label>
@@ -400,6 +401,37 @@ function legend(){
   else L2=[['Valid','--good'],['Revisi','--rsd'],['Kurang','--warn'],['Belum','--none']].map(a=>[css(a[1]),'QC '+a[0]]);
   $('#legend').innerHTML=(st.zon?L2:[]).map(a=>`<span><i style="background:${a[0]}"></i>${a[1]}</span>`).join('')+(st.z25?'<span><i class="swatch" style="--c:#8e44ad"></i>ZNT 2025 (warna = kelas nilai yang sama)</span>':'')+(st.bkec?'<span><i class="swatch" style="--c:#111"></i>Batas kecamatan</span>':'')+(st.bdesa?'<span><i class="swatch" style="--c:#555;border-style:dashed"></i>Batas desa</span>':'')+(st.aoiA?'<span><i class="swatch" style="--c:#e11d48;border-style:dashed"></i>AOI awal</span>':'')+(st.aoiB?'<span><i class="swatch" style="--c:#0ea5e9"></i>AOI baru</span>':'')+(st.pts?`<span><i style="background:var(--ink);border-radius:50%"></i>Titik sampel (${fmt(C.points.filter(visP).length)})</span>`:'');
 }
+function pipRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+function pipPoly(x,y,p){if(!pipRing(x,y,p[0]))return false;for(let i=1;i<p.length;i++)if(pipRing(x,y,p[i]))return false;return true}
+function pipGeom(x,y,g){return g.type==='Polygon'?pipPoly(x,y,g.coordinates):g.type==='MultiPolygon'&&g.coordinates.some(p=>pipPoly(x,y,p))}
+function parseCoord(t){const m=String(t).replace(/[;\u00b0]/g,' ').match(/-?\d+(?:[.,]\d+)?/g);if(!m||m.length<2)return null;
+  let a=parseFloat(m[0].replace(',','.')),b=parseFloat(m[1].replace(',','.'));
+  if(/,\d+\s*,/.test(t)||m.length>2&&/,/.test(t)&&!/\./.test(t)){}
+  if(Math.abs(a)>90||(a>100&&Math.abs(b)<=90)){const x=a;a=b;b=x}
+  if(Math.abs(a)>90||Math.abs(b)>180)return null;return {lat:a,lng:b}}
+let cMark=null;
+function coordSearch(txt){
+  const msg=$('#cmsg');const c=parseCoord(txt);
+  if(!c){msg.textContent='Format tidak dikenali. Contoh: -7.7826765930436, 108.49918819964 (lintang, bujur).';return}
+  if(!map)return;
+  const x=c.lng,y=c.lat;let zn=null,zf=null;
+  if(GEO)for(const f of GEO.features){if(pipGeom(x,y,f.geometry)){zn=f.properties.z;zf=f;break}}
+  let kec=null;if(BAT)for(const f of BAT.kec.features){if(pipGeom(x,y,f.geometry)){kec=f.properties.n;break}}
+  let z25=null;if(Z25)for(const f of Z25.fc.features){if(pipGeom(x,y,f.geometry)){z25=f.properties;break}}
+  const Z=zn&&C.byZ[zn];
+  let near=null,nd=1e9;C.points.forEach(p=>{if(!p.x||!p.y)return;const dx=(p.x-x)*111320*Math.cos(y*Math.PI/180),dy=(p.y-y)*110540,d=Math.hypot(dx,dy);if(d<nd){nd=d;near=p}});
+  const r=(k,v)=>`<div class="pr"><span>${k}</span><b>${v}</b></div>`;
+  const body=`<div class="pop"><div class="ph"><b>${y.toFixed(6)}, ${x.toFixed(6)}</b></div>
+   ${Z?r('Zona 2026',esc(Z.zona)+' ('+esc(Z.guna||'-')+')')+r('Surveyor',esc(Z.svy||'-'))+r('Titik / target',Z.n+' / '+Z.target)+r('Rata-rata nilai',Z.rata>0?'Rp '+fmt(Z.rata):'-'):r('Zona 2026','<i>di luar zona survei</i>')}
+   ${r('Kecamatan',esc(kec||(Z?Z.ks.join(', '):'-')||'-'))}
+   ${z25?r('ZNT 2025 di titik ini',(z25.j===2?'Pertanian':'Non-Pertanian')+', Rp '+fmt(z25.v)):''}
+   ${near?r('Titik sampel terdekat','#'+near.no+' ('+fmt(nd,0)+' m), Rp '+fmt(near.nilai)):''}
+   ${Z?`<button class="btn ghost" data-lz="${esc(Z.zona)}" style="margin-top:8px;padding:4px 10px;font-size:12px">Lihat zona ${esc(Z.zona)}</button>`:''}</div>`;
+  if(cMark)map.removeLayer(cMark);
+  cMark=L.marker([y,x],{keyboard:false}).addTo(map).bindPopup(body,{maxWidth:300});
+  map.setView([y,x],Math.max(map.getZoom(),15));cMark.openPopup();
+  msg.textContent=Z?'Titik berada di zona '+Z.zona+(kec?' (Kec. '+kec+')':'')+'.':'Titik tidak berada di zona survei mana pun'+(kec?' (Kec. '+kec+')':'')+'.';
+}
 function focusZone(zn){
   const l=layers[zn];if(!l){return}
   if(!st.zon){st.zon=true;$('#mzon').checked=true;showZon()}
@@ -508,6 +540,8 @@ $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
 $('#mzon').onchange=e=>{st.zon=e.target.checked;showZon()};
 $('#mlab').onchange=e=>{st.labm=e.target.value;drawLabels()};
 $('#z25').onchange=e=>{st.z25=e.target.checked;showZ25()};$('#z25r').oninput=e=>{st.z25o=e.target.value/100;showZ25()};
+$('#cform').onsubmit=e=>{e.preventDefault();coordSearch($('#cq').value)};
+$('#cclr').onclick=()=>{$('#cq').value='';$('#cmsg').textContent='';if(cMark&&map){map.removeLayer(cMark);cMark=null}};
 $('#bkec').onchange=e=>{st.bkec=e.target.checked;showBatas()};
 $('#bdesa').onchange=e=>{st.bdesa=e.target.checked;showBatas()};
 $('#aoiA').onchange=e=>{st.aoiA=e.target.checked;showAoi()};
