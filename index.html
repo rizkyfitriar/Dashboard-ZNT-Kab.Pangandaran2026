@@ -109,8 +109,8 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
  <aside class="side" id="side"></aside>
  <section class="mapcol">
   <div class="mtool">
-   <form class="mrow" id="cform" autocomplete="off"><div class="mf" style="flex:3"><span>Cari koordinat</span><input type="search" id="cq" placeholder="-7.7826765930436, 108.49918819964" inputmode="decimal"></div><button class="btn" type="submit" style="align-self:flex-end">Cari</button><button class="btn ghost" type="button" id="cclr" style="align-self:flex-end">Hapus</button><span id="cmsg" class="note" style="flex-basis:100%;margin:0"></span></form>
-   <div class="mrow"><div class="mf"><span>Warnai zona berdasarkan</span><select id="mmode"><option value="nilai">Nilai tanah (8 kelas)</option><option value="delta">Perubahan nilai vs ZNT 2025</option><option value="rsd">Standar deviasi (RSD)</option><option value="jml">Sebaran sampel (jumlah titik)</option><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></div><div class="mf"><span>Label di zona</span><select id="mlab"><option value="none">Tanpa label</option><option value="zona">Nomor zona</option><option value="rata">Rata-rata nilai (Rp ribu)</option><option value="n">Jumlah titik</option><option value="rsd">RSD (%)</option><option value="delta">Perubahan vs 2025 (%)</option></select></div></div>
+   <form class="mrow" id="cform" autocomplete="off"><div class="mf" style="max-width:460px"><span>Cari koordinat (lintang, bujur)</span><input type="search" id="cq" placeholder="-7.7826765930436, 108.49918819964" inputmode="decimal"></div><button class="btn" type="submit" style="align-self:flex-end">Cari</button><button class="btn ghost" type="button" id="cclr" style="align-self:flex-end">Hapus</button><span id="cmsg" class="note" style="margin:0;align-self:flex-end;font-weight:600"></span></form>
+   <div class="mrow"><div class="mf"><span>Warnai zona berdasarkan</span><select id="mmode"><option value="jz">Jenis zona (JNSZN)</option><option value="nilai">Nilai tanah (8 kelas)</option><option value="delta">Perubahan nilai vs ZNT 2025</option><option value="rsd">Standar deviasi (RSD)</option><option value="jml">Sebaran sampel (jumlah titik)</option><option value="svy">Per surveyor</option><option value="cap">Capaian zona</option><option value="qc">Kualitas data</option></select></div><div class="mf"><span>Tampilkan jenis zona</span><select id="mjz"><option value="">Semua (1 dan 2)</option><option value="Non-Pertanian">JNSZN 1: Non-Pertanian</option><option value="Pertanian">JNSZN 2: Pertanian</option></select></div><div class="mf"><span>Label di zona</span><select id="mlab"><option value="none">Tanpa label</option><option value="zona">Nomor zona</option><option value="rata">Rata-rata nilai (Rp ribu)</option><option value="n">Jumlah titik</option><option value="rsd">RSD (%)</option><option value="delta">Perubahan vs 2025 (%)</option></select></div></div>
    <div class="mrow"><span class="mt">Lapisan</span>
     <label class="lchip"><input type="checkbox" id="mzon" checked><i class="swatch" style="--c:#2a9d8f"></i>Zona</label>
     <label class="lchip"><input type="checkbox" id="mpts" checked><i class="swatch" style="--c:#999"></i>Titik sampel</label>
@@ -142,7 +142,7 @@ const UNK='(belum ditentukan)';
 let DB=window.DATA||{zones:[],points:[],svymap:{}};
 const GEO=window.ZONA_GEO,BAT=window.BATAS,Z25=window.ZNT25;
 const ZK={};if(GEO)GEO.features.forEach(f=>ZK[f.properties.z]=f.properties.k||[]);
-const st={z25:false,z25o:.6,kec:'',desa:'',labm:'none',brk:null,bkec:false,bdesa:false,zon:true,aoiA:false,aoiB:false,svy:'',mode:'nilai',pts:true,tab:'analisis',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
+const st={jz:'',z25:false,z25o:.6,kec:'',desa:'',labm:'none',brk:null,bkec:false,bdesa:false,zon:true,aoiA:false,aoiB:false,svy:'',mode:'nilai',pts:true,tab:'analisis',trend:14,view:'split',kurang:0,jenis:'Transaksi'};
 const SVY_COL=['#2f7fb8','#d0802c','#7a5aa6','#3a9b6a','#b8465a'];
 
 /* ---------- hitung ---------- */
@@ -175,8 +175,8 @@ let C=compute();
 const svyCol=s=>{const i=C.svys.indexOf(s);return i<0?css('--none'):SVY_COL[i%SVY_COL.length]};
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
 const CAP_COL={Selesai:'--good',Proses:'--warn',Belum:'--bad'},QC_COL={Valid:'--good',Revisi:'--rsd',Kurang:'--warn',Belum:'--none'};
-const vis=z=>(!st.svy||z.svy===st.svy)&&(!st.kec||z.ks.includes(st.kec))&&(!st.desa||z.ds.includes(st.desa));
-const visP=p=>(!st.svy||p.svy===st.svy)&&(!st.kec||p.kec===st.kec)&&(!st.desa||p.desa===st.desa);
+const vis=z=>(!st.jz||z.guna===st.jz)&&(!st.svy||z.svy===st.svy)&&(!st.kec||z.ks.includes(st.kec))&&(!st.desa||z.ds.includes(st.desa));
+const visP=p=>(!st.jz||(C.byZ[p.zona]||{}).guna===st.jz)&&(!st.svy||p.svy===st.svy)&&(!st.kec||p.kec===st.kec)&&(!st.desa||p.desa===st.desa);
 const zsort=(a,b)=>parseInt(a)-parseInt(b)||String(a).localeCompare(b);
 const fdate=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
 
@@ -188,6 +188,7 @@ function defaultBreaks(){const v=C.zones.filter(z=>z.rata>0).map(z=>z.rata).sort
 function getBreaks(){return st.brk||defaultBreaks()}
 function classOf(v){const b=getBreaks();let i=0;while(i<7&&v>=b[i])i++;return i}
 const DLT_CLS=[['turun lebih dari 30%',x=>x<-30,'#1a9850'],['turun 10 - 30%',x=>x<-10,'#a6d96a'],['relatif sama (-10 s/d +10%)',x=>x<=10,'#e0e0e0'],['naik 10 - 30%',x=>x<=30,'#fdae61'],['naik 30 - 60%',x=>x<=60,'#f46d43'],['naik lebih dari 60%',x=>true,'#a50026']];
+const JZ_COL={'Non-Pertanian':'#e07a1f','Pertanian':'#3c9d4e'};
 const RSD_CLS=[['≤ 15%',x=>x<=15,'#1a9850'],['15 - 30%',x=>x<=30,'#a6d96a'],['30 - 50%',x=>x<=50,'#fee08b'],['50 - 100%',x=>x<=100,'#f46d43'],['> 100%',x=>true,'#a50026']];
 const JML_CLS=[['0 titik',n=>n===0,'#cfd8dc'],['1 - 2',n=>n<=2,'#c6dbef'],['3',n=>n===3,'#9ecae1'],['4 - 5',n=>n<=5,'#6baed6'],['6 - 9',n=>n<=9,'#3182bd'],['10 atau lebih',n=>true,'#08519c']];
 function kecList(){return [...new Set(C.points.map(p=>p.kec).filter(Boolean))].sort()}
@@ -320,6 +321,7 @@ function initMap(){
 function zcolor(z){if(!z)return css('--line');
   if(st.mode==='cap')return css(CAP_COL[z.cap]);if(st.mode==='qc')return css(QC_COL[z.qc]);
   if(st.mode==='nilai')return z.rata>0?CLS8[classOf(z.rata)]:css('--none');
+  if(st.mode==='jz')return JZ_COL[z.guna]||css('--none');
   if(st.mode==='delta')return z.delta==null?css('--none'):DLT_CLS.find(c=>c[1](z.delta))[2];
   if(st.mode==='rsd'){if(z.rsd==null||z.n<2)return css('--none');return RSD_CLS.find(c=>c[1](z.rsd))[2]}
   if(st.mode==='jml')return JML_CLS.find(c=>c[1](z.n))[2];
@@ -393,6 +395,7 @@ function legend(){
   let L2;const Zv=C.zones.filter(vis);
   if(st.mode==='nilai'){const b=getBreaks(),rp=x=>'Rp '+fmt(x);
     L2=CLS8.map((c,i)=>[c,(i===0?'< '+rp(b[0]):i===7?'&ge; '+rp(b[6]):rp(b[i-1])+' - '+rp(b[i]))+' ('+Zv.filter(z=>z.rata>0&&classOf(z.rata)===i).length+')']);L2.push([css('--none'),'Belum ada nilai ('+Zv.filter(z=>!(z.rata>0)).length+')'])}
+  else if(st.mode==='jz'){L2=[['Non-Pertanian','JNSZN 1: Non-Pertanian'],['Pertanian','JNSZN 2: Pertanian']].map(a=>[JZ_COL[a[0]],a[1]+' ('+Zv.filter(z=>z.guna===a[0]).length+' zona)'])}
   else if(st.mode==='delta'){L2=DLT_CLS.map(c=>[c[2],c[0]+' ('+Zv.filter(z=>z.delta!=null&&DLT_CLS.find(k=>k[1](z.delta))===c).length+')']);L2.push([css('--none'),'Tidak ada pembanding 2025 ('+Zv.filter(z=>z.delta==null).length+')'])}
   else if(st.mode==='rsd'){L2=RSD_CLS.map(c=>[c[2],'RSD '+c[0]+' ('+Zv.filter(z=>z.rsd!=null&&z.n>=2&&RSD_CLS.find(k=>k[1](z.rsd))===c).length+')']);L2.push([css('--none'),'RSD belum bisa dihitung'])}
   else if(st.mode==='jml'){L2=JML_CLS.map(c=>[c[2],c[0]+' ('+Zv.filter(z=>JML_CLS.find(k=>k[1](z.n))===c).length+' zona)'])}
@@ -428,7 +431,7 @@ function coordSearch(txt){
    ${near?r('Titik sampel terdekat','#'+near.no+' ('+fmt(nd,0)+' m), Rp '+fmt(near.nilai)):''}
    ${Z?`<button class="btn ghost" data-lz="${esc(Z.zona)}" style="margin-top:8px;padding:4px 10px;font-size:12px">Lihat zona ${esc(Z.zona)}</button>`:''}</div>`;
   if(cMark)map.removeLayer(cMark);
-  cMark=L.marker([y,x],{keyboard:false}).addTo(map).bindPopup(body,{maxWidth:300});
+  cMark=L.circleMarker([y,x],{radius:9,color:'#fff',weight:3,fillColor:'#d6249f',fillOpacity:1}).addTo(map).bindPopup(body,{maxWidth:300});
   map.setView([y,x],Math.max(map.getZoom(),15));cMark.openPopup();
   msg.textContent=Z?'Titik berada di zona '+Z.zona+(kec?' (Kec. '+kec+')':'')+'.':'Titik tidak berada di zona survei mana pun'+(kec?' (Kec. '+kec+')':'')+'.';
 }
@@ -540,6 +543,7 @@ $('#mpts').onchange=e=>{st.pts=e.target.checked;drawPts();legend()};
 $('#mzon').onchange=e=>{st.zon=e.target.checked;showZon()};
 $('#mlab').onchange=e=>{st.labm=e.target.value;drawLabels()};
 $('#z25').onchange=e=>{st.z25=e.target.checked;showZ25()};$('#z25r').oninput=e=>{st.z25o=e.target.value/100;showZ25()};
+$('#mjz').onchange=e=>{st.jz=e.target.value;side();restyle();drawPts();legend();drawLabels();rekap()};
 $('#cform').onsubmit=e=>{e.preventDefault();coordSearch($('#cq').value)};
 $('#cclr').onclick=()=>{$('#cq').value='';$('#cmsg').textContent='';if(cMark&&map){map.removeLayer(cMark);cMark=null}};
 $('#bkec').onchange=e=>{st.bkec=e.target.checked;showBatas()};
