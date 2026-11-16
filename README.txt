@@ -4,6 +4,7 @@ Isi folder
   index.html        halaman dashboard
   data.js           data yang ditampilkan (dibuat oleh update_data.py)
   zona_geo.js       bentuk zona untuk peta (tetap, kecuali zona diubah)
+  aoi_geo.js        batas AOI awal dan AOI baru (tombol tampil/sembunyi di peta)
   surveyor_zona.csv daftar surveyor per zona (dipakai bila kolom Surveyor di SHP kosong atau "-")
   update_data.py    skrip pembuat data.js
   leaflet/          pustaka peta (jangan dihapus)
