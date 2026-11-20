@@ -127,11 +127,8 @@ details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin-top:6
 <section class="rekap gut" id="rekap"></section>
 
 <script src="leaflet/leaflet.js"></script>
-<script src="zona_geo.js"></script>
-<script src="aoi_geo.js"></script>
-<script src="batas_geo.js"></script>
-<script src="znt25_geo.js"></script>
-<script src="data.js"></script>
+<script>document.write('<script src="data.js?t='+Date.now()+'"><\/script>')</script>
+<script>(function(){var v=encodeURIComponent((window.DATA||{}).updated||Date.now());['zona_geo','aoi_geo','batas_geo','znt25_geo'].forEach(function(n){document.write('<script src="'+n+'.js?v='+v+'"><\/script>')})})()</script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -559,7 +556,7 @@ function syncNow(){
   const box=$('#sync'),msg=$('#syncmsg');box.className='card sync busy';msg.textContent='Mengambil data terbaru...';
   const old=window.DATA&&window.DATA.updated,sc=document.createElement('script');
   sc.src='data.js?t='+Date.now();
-  sc.onload=()=>{sc.remove();DB=window.DATA||DB;lastSync=new Date();refresh();const m=$('#syncmsg');if(m)m.textContent=(DB.updated===old?'Sudah data terbaru. ':'Data diperbarui. ')+syncText()};
+  sc.onload=()=>{sc.remove();if(window.DATA&&window.DATA.updated!==old){location.reload();return}DB=window.DATA||DB;lastSync=new Date();refresh();const m=$('#syncmsg');if(m)m.textContent=(DB.updated===old?'Sudah data terbaru. ':'Data diperbarui. ')+syncText()};
   sc.onerror=()=>{sc.remove();box.className='card sync err';msg.textContent='Gagal mengambil data.js. Cek koneksi atau pastikan file data.js ada di hosting.'};
   document.body.appendChild(sc);
 }
