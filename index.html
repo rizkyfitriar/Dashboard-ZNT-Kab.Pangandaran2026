@@ -156,7 +156,7 @@ function compute(){
     let svy=(z.svy&&z.svy!=='-')?canonSvy(z.svy,known):(DB.svymap&&DB.svymap[z.zona])||'';
     if(!svy&&psv[z.zona])svy=Object.entries(psv[z.zona]).sort((a,b)=>b[1]-a[1])[0][0];
     const cap=n>=target?'Selesai':n>0?'Proses':'Belum';
-    const qc=n===0?'Belum':n<3?'Kurang':(rsd!=null&&rsd>30)?'Revisi':'Valid';
+    const qc=n===0?'Belum':n<3?'Kurang':(rsd!=null&&(rsd>30||rsd===0))?'Revisi':'Valid';
     const c25=Z25&&Z25.cmp[z.zona],v25=c25&&c25.v>0&&c25.c>=.5?c25.v:null;
     const vv=vals[z.zona],rata=vv&&vv.length?vv.reduce((a,x)=>a+x,0)/vv.length:null;
     const delta=v25&&rata>0?(rata/v25-1)*100:null;
@@ -225,7 +225,7 @@ function side(){
    <div class="big">${fmt(pct(nValid,tz),1)}%</div><div class="bar"><i style="width:${pct(nValid,tz)}%"></i></div>
    <div class="sub">${fmt(nValid)} zona valid dari ${fmt(tz)} zona</div>
    ${statsHtml([['Valid',nValid,'var(--good)'],['Revisi',q('Revisi'),'var(--rsd)'],['Kurang',q('Kurang'),'var(--warn)'],['Belum',q('Belum'),'var(--none)']])}
-   <p class="note">Valid bila RSD 30% atau kurang dengan minimal 3 titik. Revisi bila RSD di atas 30%. Kurang bila titik 1 atau 2.</p></div>
+   <p class="note">Valid bila RSD 30% atau kurang dengan minimal 3 titik. Revisi bila RSD di atas 30% atau 0% (tidak diizinkan SIPENTA). Kurang bila titik 1 atau 2.</p></div>
   <div class="card"><h2>Capaian titik aktual</h2>
    <div class="big">${fmt(pct(ok,tot),1)}%</div><div class="bar"><i style="width:${pct(ok,tot)}%"></i></div>
    <div class="sub">${fmt(ok)} dari ${fmt(tot)} titik target terpenuhi</div>
@@ -336,7 +336,7 @@ function popup(zn){const z=C.byZ[zn];if(!z)return `<b>Zona ${esc(zn)}</b><br>Bel
   const kat=z.ha<=900?'< 900 Ha':z.ha<=1250?'900 - 1250 Ha':'> 1250 Ha';
   const jc={};pts.forEach(p=>jc[p.jenis]=(jc[p.jenis]||0)+1);
   const jenis=Object.entries(jc).map(([k,n])=>`${esc(k)} ${n}`).join(' &middot; ')||'-';
-  const qcb=z.qc==='Valid'?`<span class="pill good">Valid (RSD ${fmt(z.rsd,2)}% &le; 30%)</span>`:z.qc==='Revisi'?`<span class="pill warn">Perlu Revisi (RSD ${fmt(z.rsd,2)}% &gt; batas 30%)</span>`:z.qc==='Kurang'?`<span class="pill warn">Sampel Kurang (${z.n} titik, minimal 3)</span>`:`<span class="pill none">Belum Survei</span>`;
+  const qcb=z.qc==='Valid'?`<span class="pill good">Valid (RSD ${fmt(z.rsd,2)}% &le; 30%)</span>`:z.qc==='Revisi'?`<span class="pill warn">Perlu Revisi (${z.rsd===0?'RSD 0% tidak diizinkan':'RSD '+fmt(z.rsd,2)+'% &gt; batas 30%'})</span>`:z.qc==='Kurang'?`<span class="pill warn">Sampel Kurang (${z.n} titik, minimal 3)</span>`:`<span class="pill none">Belum Survei</span>`;
   const r=(k,val)=>`<div class="pr"><span>${k}</span><b>${val}</b></div>`;
   return `<div class="pop"><div class="ph"><span class="pbar" style="background:${svyCol(z.svy)}"></span><b>Zona ${esc(zn)}</b>${badge}</div>
   ${r('Surveyor Wilayah',`<span style="color:${svyCol(z.svy)}">${esc(z.svy)}</span>`)}${r('Luasan Zona',fmt(z.ha,2)+' Ha')}${r('Kategori Target',kat)}${r('Target Wajib',z.target+' Titik Sampel')}
